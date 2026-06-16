@@ -1,0 +1,479 @@
+@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@500;600;700&family=Fira+Sans:wght@400;500;600;700&display=swap');
+
+:root {
+  color: #281414;
+  background: #fff8f2;
+  font-family: 'Fira Sans', system-ui, sans-serif;
+  line-height: 1.4;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background:
+    linear-gradient(90deg, rgba(220, 38, 38, 0.08) 1px, transparent 1px),
+    linear-gradient(0deg, rgba(220, 38, 38, 0.08) 1px, transparent 1px),
+    #fff8f2;
+  background-size: 28px 28px;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button {
+  border: 2px solid #281414;
+  background: #fff;
+  color: #281414;
+  min-height: 42px;
+  padding: 0 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: background 160ms ease, color 160ms ease, transform 160ms ease;
+}
+
+button:hover:not(:disabled) {
+  background: #fbbf24;
+  transform: translateY(-1px);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+input,
+textarea,
+select {
+  width: 100%;
+  border: 2px solid #281414;
+  background: #fffdfa;
+  color: #281414;
+  padding: 10px 11px;
+  outline: none;
+}
+
+textarea {
+  resize: vertical;
+}
+
+input:focus,
+textarea:focus,
+select:focus,
+button:focus-visible {
+  outline: 3px solid #fbbf24;
+  outline-offset: 2px;
+}
+
+.shell {
+  width: min(1500px, calc(100% - 28px));
+  margin: 0 auto;
+  padding: 24px 0 36px;
+}
+
+.topbar {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 18px;
+  border-bottom: 4px solid #281414;
+  padding-bottom: 18px;
+}
+
+.eyebrow {
+  margin: 0 0 4px;
+  font-family: 'Fira Code', monospace;
+  text-transform: uppercase;
+  color: #dc2626;
+  font-weight: 700;
+}
+
+h1,
+h2 {
+  margin: 0;
+  letter-spacing: 0;
+}
+
+h1 {
+  font-family: 'Fira Code', monospace;
+  font-size: clamp(2.2rem, 6vw, 5rem);
+  line-height: 0.95;
+}
+
+h2 {
+  font-size: 1.05rem;
+}
+
+.status-strip,
+.panel-title,
+.tool-row,
+.new-contact,
+.board-heading,
+.draft-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.status-strip {
+  border: 2px solid #281414;
+  background: #fff;
+  padding: 8px 10px;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border: 2px solid #281414;
+  background: #fbbf24;
+}
+
+.dot.ok {
+  background: #22c55e;
+}
+
+.dot.warn {
+  background: #ef4444;
+}
+
+.icon-button {
+  min-height: 34px;
+  width: 34px;
+  min-width: 34px;
+  padding: 0;
+}
+
+.icon-button.danger:hover {
+  background: #ef4444;
+  color: #fff;
+}
+
+.notice {
+  margin-top: 18px;
+  border: 2px solid #281414;
+  background: #fbbf24;
+  padding: 11px 13px;
+  font-weight: 600;
+}
+
+.notice.error {
+  background: #ef4444;
+  color: #fff;
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(320px, 1.25fr) minmax(320px, 1fr);
+  grid-template-areas:
+    'source contacts'
+    'roles actions';
+  gap: 16px;
+  margin-top: 18px;
+}
+
+.panel,
+.draft-board {
+  border: 3px solid #281414;
+  background: #fffdfa;
+  padding: 16px;
+  min-width: 0;
+}
+
+.source-panel {
+  grid-area: source;
+}
+
+.contact-panel {
+  grid-area: contacts;
+}
+
+.role-panel {
+  grid-area: roles;
+}
+
+.action-panel {
+  grid-area: actions;
+}
+
+.source-panel textarea {
+  min-height: 310px;
+  margin-top: 14px;
+  font-family: 'Fira Code', monospace;
+  font-size: 0.93rem;
+}
+
+.tool-row {
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+.file-button {
+  border: 2px solid #281414;
+  background: #dc2626;
+  color: #fff;
+  min-height: 42px;
+  padding: 0 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.file-button input {
+  display: none;
+}
+
+.contact-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  max-height: 430px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.contact-row {
+  display: grid;
+  grid-template-columns: 24px minmax(96px, 1fr) minmax(110px, 0.8fr) minmax(130px, 1.2fr) 34px;
+  gap: 8px;
+  align-items: center;
+  border-bottom: 2px solid rgba(40, 20, 20, 0.2);
+  padding-bottom: 10px;
+}
+
+.contact-row input,
+.contact-row select,
+.new-contact input,
+.new-contact select {
+  min-width: 0;
+}
+
+.contact-row input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+}
+
+.contact-row small {
+  grid-column: 2 / -1;
+  color: #6b3b3b;
+}
+
+.new-contact {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: 1fr 0.8fr 1.2fr auto;
+}
+
+.role-tabs {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 12px 0;
+}
+
+.role-tabs button {
+  min-width: max-content;
+  min-height: 36px;
+}
+
+.role-tabs button.active,
+.primary {
+  background: #dc2626;
+  color: #fff;
+}
+
+.role-editor p {
+  margin: 0 0 10px;
+  color: #6b3b3b;
+}
+
+.role-editor textarea {
+  min-height: 110px;
+  margin-bottom: 10px;
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px 12px;
+  margin: 18px 0;
+  align-items: baseline;
+}
+
+.metrics strong {
+  font-family: 'Fira Code', monospace;
+  font-size: 2rem;
+  color: #dc2626;
+}
+
+.action-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.action-panel button {
+  width: 100%;
+  margin-top: 10px;
+}
+
+.draft-board {
+  margin-top: 16px;
+}
+
+.empty-state {
+  margin-top: 14px;
+  min-height: 140px;
+  border: 2px dashed #6b3b3b;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  color: #6b3b3b;
+  padding: 16px;
+}
+
+.draft-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(310px, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.draft-item {
+  border: 2px solid #281414;
+  background: #fff;
+  padding: 12px;
+  min-width: 0;
+}
+
+.draft-head {
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.draft-head label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+}
+
+.draft-head input {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+}
+
+.draft-head small {
+  font-family: 'Fira Code', monospace;
+  color: #dc2626;
+}
+
+.draft-item textarea {
+  min-height: 260px;
+  font-size: 0.95rem;
+}
+
+.sent {
+  margin: 8px 0 0;
+  color: #dc2626;
+  font-weight: 700;
+}
+
+.ok-text {
+  color: #15803d;
+}
+
+.spin {
+  animation: spin 900ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 920px) {
+  .topbar {
+    align-items: start;
+    flex-direction: column;
+  }
+
+  .workspace {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      'source'
+      'contacts'
+      'roles'
+      'actions';
+  }
+
+  .contact-row,
+  .new-contact {
+    grid-template-columns: 1fr;
+  }
+
+  .contact-row input[type='checkbox'] {
+    justify-self: start;
+  }
+
+  .contact-row small {
+    grid-column: auto;
+  }
+}
+
+@media (max-width: 520px) {
+  .shell {
+    width: min(100% - 16px, 1500px);
+    padding-top: 12px;
+  }
+
+  .panel,
+  .draft-board {
+    padding: 12px;
+  }
+
+  button {
+    width: 100%;
+  }
+
+  .icon-button {
+    width: 34px;
+  }
+
+  .status-strip .icon-button {
+    width: 34px;
+  }
+
+  .file-button {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .status-strip,
+  .tool-row,
+  .panel-title {
+    align-items: start;
+    flex-wrap: wrap;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    transition-duration: 1ms !important;
+  }
+}
