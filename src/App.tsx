@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type MouseEvent, type ReactNode } from 'react';
 import {
   Bell,
   Check,
@@ -18,6 +18,12 @@ import { api, type Contact, type Draft, type Role } from './api';
 
 type DraftState = Draft & { selected: boolean; editedContent: string; sendStatus?: string };
 
+type AceternityCardProps = {
+  children: ReactNode;
+  className?: string;
+  as?: 'section' | 'article';
+};
+
 const blankContact = (roleKey = 'product'): Omit<Contact, 'id'> => ({
   name: '',
   roleKey,
@@ -25,6 +31,23 @@ const blankContact = (roleKey = 'product'): Omit<Contact, 'id'> => ({
   preference: '',
   active: true,
 });
+
+function AceternityCard({ children, className = '', as = 'section' }: AceternityCardProps) {
+  const Component = as;
+
+  function updateSpotlight(event: MouseEvent<HTMLElement>) {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    event.currentTarget.style.setProperty('--spotlight-x', `${event.clientX - bounds.left}px`);
+    event.currentTarget.style.setProperty('--spotlight-y', `${event.clientY - bounds.top}px`);
+  }
+
+  return (
+    <Component className={`aceternity-card ${className}`} onMouseMove={updateSpotlight}>
+      <span className="card-spotlight" aria-hidden="true" />
+      <div className="card-content">{children}</div>
+    </Component>
+  );
+}
 
 export function App() {
   const [health, setHealth] = useState<{ deepseekConfigured: boolean; model: string } | null>(null);
@@ -155,13 +178,17 @@ export function App() {
   const selectedCount = selectedContactIds.length;
   const canGenerate = sourceText.trim() && selectedCount > 0 && busy !== 'generate';
   const selectedDraftCount = drafts.filter((draft) => draft.selected).length;
+  const activeContactCount = contacts.filter((contact) => contact.active).length;
+  const currentRoleKey = roleEditKey || roles[0]?.key;
 
   return (
     <main className="shell">
+      <div className="aceternity-beams" aria-hidden="true" />
       <header className="topbar">
-        <div>
+        <div className="brand-block">
           <p className="eyebrow">AI team relay</p>
           <h1>Interchange</h1>
+          <p className="hero-copy">把同一份事实，转换成每个岗位都愿意读、读得懂、能行动的团队消息。</p>
         </div>
         <div className="status-strip">
           <span className={health?.deepseekConfigured ? 'dot ok' : 'dot warn'} />
@@ -172,6 +199,24 @@ export function App() {
         </div>
       </header>
 
+      <section className="overview-grid" aria-label="工作台概览">
+        <div className="overview-card">
+          <span>输入内容</span>
+          <strong>{sourceText.trim().length}</strong>
+          <small>字符已准备</small>
+        </div>
+        <div className="overview-card">
+          <span>当前收件人</span>
+          <strong>{selectedCount}</strong>
+          <small>{activeContactCount} 位启用</small>
+        </div>
+        <div className="overview-card">
+          <span>待确认草稿</span>
+          <strong>{drafts.length}</strong>
+          <small>{selectedDraftCount} 条已勾选</small>
+        </div>
+      </section>
+
       {(error || status) && (
         <section className={`notice ${error ? 'error' : ''}`}>
           {error || status}
@@ -179,12 +224,16 @@ export function App() {
       )}
 
       <section className="workspace">
-        <section className="panel source-panel">
+        <AceternityCard className="panel source-panel">
           <div className="panel-title">
             <FileText size={20} />
-            <h2>客观信息</h2>
+            <div>
+              <h2>客观信息</h2>
+              <p>先放事实，再交给 AI 转译</p>
+            </div>
           </div>
           <textarea
+            aria-label="客观信息输入"
             value={sourceText}
             onChange={(event) => {
               setSourceText(event.target.value);
@@ -211,12 +260,15 @@ export function App() {
               标准化文本
             </button>
           </div>
-        </section>
+        </AceternityCard>
 
-        <section className="panel contact-panel">
+        <AceternityCard className="panel contact-panel">
           <div className="panel-title">
             <Users size={20} />
-            <h2>收件人与角色</h2>
+            <div>
+              <h2>收件人与角色</h2>
+              <p>每个人收到适合自己岗位的版本</p>
+            </div>
           </div>
           <div className="contact-list">
             {contacts.map((contact) => {
@@ -225,6 +277,7 @@ export function App() {
               return (
                 <div className="contact-row" key={contact.id}>
                   <input
+                    aria-label={`选择 ${contact.name || '未命名联系人'}`}
                     type="checkbox"
                     checked={selected}
                     onChange={(event) => {
@@ -235,13 +288,14 @@ export function App() {
                       );
                     }}
                   />
-                  <input value={contact.name} onChange={(event) => updateContact(contact.id, { name: event.target.value })} />
-                  <select value={contact.roleKey} onChange={(event) => updateContact(contact.id, { roleKey: event.target.value })}>
+                  <input aria-label="联系人姓名" value={contact.name} onChange={(event) => updateContact(contact.id, { name: event.target.value })} />
+                  <select aria-label="联系人角色" value={contact.roleKey} onChange={(event) => updateContact(contact.id, { roleKey: event.target.value })}>
                     {roles.map((item) => (
                       <option key={item.key} value={item.key}>{item.label}</option>
                     ))}
                   </select>
                   <input
+                    aria-label="Webhook URL"
                     value={contact.webhookUrl}
                     placeholder="Webhook URL"
                     onChange={(event) => updateContact(contact.id, { webhookUrl: event.target.value })}
@@ -257,11 +311,13 @@ export function App() {
 
           <div className="new-contact">
             <input
+              aria-label="新增收件人姓名"
               value={contactDraft.name}
               placeholder="新增收件人"
               onChange={(event) => setContactDraft({ ...contactDraft, name: event.target.value })}
             />
             <select
+              aria-label="新增收件人角色"
               value={contactDraft.roleKey}
               onChange={(event) => setContactDraft({ ...contactDraft, roleKey: event.target.value })}
             >
@@ -270,6 +326,7 @@ export function App() {
               ))}
             </select>
             <input
+              aria-label="新增收件人 Webhook URL"
               value={contactDraft.webhookUrl}
               placeholder="Webhook URL"
               onChange={(event) => setContactDraft({ ...contactDraft, webhookUrl: event.target.value })}
@@ -279,18 +336,21 @@ export function App() {
               添加
             </button>
           </div>
-        </section>
+        </AceternityCard>
 
-        <section className="panel role-panel">
+        <AceternityCard className="panel role-panel">
           <div className="panel-title">
             <Settings2 size={20} />
-            <h2>角色说话习惯</h2>
+            <div>
+              <h2>角色说话习惯</h2>
+              <p>保留岗位差异，也保留人的语气</p>
+            </div>
           </div>
           <div className="role-tabs">
             {roles.map((role) => (
               <button
                 key={role.key}
-                className={roleEditKey === role.key || (!roleEditKey && role.key === roles[0]?.key) ? 'active' : ''}
+                className={currentRoleKey === role.key ? 'active' : ''}
                 onClick={() => setRoleEditKey(role.key)}
               >
                 {role.label}
@@ -298,11 +358,12 @@ export function App() {
             ))}
           </div>
           {roles
-            .filter((role) => role.key === (roleEditKey || roles[0]?.key))
+            .filter((role) => role.key === currentRoleKey)
             .map((role) => (
               <div className="role-editor" key={role.key}>
                 <p>{role.defaultPreference}</p>
                 <textarea
+                  aria-label={`${role.label} 角色说话习惯`}
                   value={role.customPreference}
                   placeholder="补充你自己的表达偏好，例如：更口语、先说结论、必须列风险..."
                   onChange={(event) =>
@@ -319,12 +380,15 @@ export function App() {
                 </button>
               </div>
             ))}
-        </section>
+        </AceternityCard>
 
-        <section className="panel action-panel">
+        <AceternityCard className="panel action-panel">
           <div className="panel-title">
             <Sparkles size={20} />
-            <h2>转换与发送</h2>
+            <div>
+              <h2>转换与发送</h2>
+              <p>先生成、再人工确认、最后发送</p>
+            </div>
           </div>
           <div className="metrics">
             <strong>{sourceText.trim().length}</strong>
@@ -342,20 +406,23 @@ export function App() {
             {busy === 'send' ? <Loader2 className="spin" size={18} /> : <Send size={18} />}
             确认发送 {selectedDraftCount || ''}
           </button>
-        </section>
+        </AceternityCard>
       </section>
 
-      <section className="draft-board">
+      <AceternityCard className="draft-board">
         <div className="board-heading">
           <Bell size={20} />
-          <h2>待确认消息</h2>
+          <div>
+            <h2>待确认消息</h2>
+            <p>这里是最后一道温和但必要的人工把关</p>
+          </div>
         </div>
         {drafts.length === 0 ? (
           <div className="empty-state">生成后，每个收件人的消息会在这里独立编辑和确认。</div>
         ) : (
           <div className="draft-grid">
             {drafts.map((draft) => (
-              <article className="draft-item" key={draft.generationRecordId}>
+              <AceternityCard className="draft-item" as="article" key={draft.generationRecordId}>
                 <div className="draft-head">
                   <label>
                     <input
@@ -376,6 +443,7 @@ export function App() {
                   <small>{draft.role.label}</small>
                 </div>
                 <textarea
+                  aria-label={`${draft.contact.name} 的待发送消息`}
                   value={draft.editedContent}
                   onChange={(event) =>
                     setDrafts((current) =>
@@ -388,12 +456,11 @@ export function App() {
                   }
                 />
                 {draft.sendStatus && <p className={draft.sendStatus.startsWith('已') ? 'sent ok-text' : 'sent'}>{draft.sendStatus}</p>}
-              </article>
+              </AceternityCard>
             ))}
           </div>
         )}
-      </section>
+      </AceternityCard>
     </main>
   );
 }
-
