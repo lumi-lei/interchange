@@ -70,6 +70,56 @@ describe('Interchange API', () => {
     expect(updated.body.preference).toContain('风险');
   });
 
+  it('toggles contact active state through the existing update endpoint', async () => {
+    const app = createApp();
+    const created = await request(app)
+      .post('/api/contacts')
+      .send({ name: '状态切换', roleKey: 'qa', webhookUrl: '', preference: '', active: true })
+      .expect(201);
+
+    const disabled = await request(app)
+      .put(`/api/contacts/${created.body.id}`)
+      .send({ active: false })
+      .expect(200);
+
+    expect(disabled.body.active).toBe(false);
+
+    const enabled = await request(app)
+      .put(`/api/contacts/${created.body.id}`)
+      .send({ active: true })
+      .expect(200);
+
+    expect(enabled.body.active).toBe(true);
+  });
+
+  it('skips inactive contacts during generation', async () => {
+    const app = createApp();
+    const contact = await request(app)
+      .post('/api/contacts')
+      .send({ name: '停用联系人', roleKey: 'product', webhookUrl: '', preference: '', active: false })
+      .expect(201);
+
+    const response = await request(app)
+      .post('/api/generate')
+      .send({ sourceText: '变更：只验证停用联系人会被跳过。', inputRecordId: null, contactIds: [contact.body.id] })
+      .expect(200);
+
+    expect(response.body.drafts).toEqual([]);
+  });
+
+  it('keeps the existing permanent delete contact endpoint behavior', async () => {
+    const app = createApp();
+    const created = await request(app)
+      .post('/api/contacts')
+      .send({ name: '待删除联系人', roleKey: 'qa', webhookUrl: '', preference: '', active: false })
+      .expect(201);
+
+    await request(app).delete(`/api/contacts/${created.body.id}`).expect(204);
+
+    const contacts = await request(app).get('/api/contacts').expect(200);
+    expect(contacts.body.some((contact: any) => contact.id === created.body.id)).toBe(false);
+  });
+
   it('parses typed text into an input record', async () => {
     const response = await request(createApp())
       .post('/api/inputs/parse')

@@ -7,9 +7,12 @@ import {
   Plus,
   RefreshCw,
   Save,
+  Search,
   Send,
   Settings2,
   Sparkles,
+  ToggleLeft,
+  ToggleRight,
   Trash2,
   Upload,
   Users,
@@ -17,6 +20,7 @@ import {
 import { api, type Contact, type Draft, type Role } from './api';
 
 type DraftState = Draft & { selected: boolean; editedContent: string; sendStatus?: string };
+type ContactStatusFilter = 'active' | 'inactive' | 'all';
 
 type AceternityCardProps = {
   children: ReactNode;
@@ -62,8 +66,25 @@ export function App() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState('');
   const [roleEditKey, setRoleEditKey] = useState('');
+  const [contactSearch, setContactSearch] = useState('');
+  const [contactRoleFilter, setContactRoleFilter] = useState('all');
+  const [contactStatusFilter, setContactStatusFilter] = useState<ContactStatusFilter>('active');
 
   const roleMap = useMemo(() => new Map(roles.map((role) => [role.key, role])), [roles]);
+  const filteredContacts = useMemo(() => {
+    const query = contactSearch.trim().toLocaleLowerCase();
+    return contacts.filter((contact) => {
+      const matchesStatus =
+        contactStatusFilter === 'all'
+          || (contactStatusFilter === 'active' ? contact.active : !contact.active);
+      const matchesRole = contactRoleFilter === 'all' || contact.roleKey === contactRoleFilter;
+      const matchesSearch =
+        !query
+        || contact.name.toLocaleLowerCase().includes(query)
+        || contact.webhookUrl.toLocaleLowerCase().includes(query);
+      return matchesStatus && matchesRole && matchesSearch;
+    });
+  }, [contactRoleFilter, contactSearch, contactStatusFilter, contacts]);
 
   async function load() {
     setError('');
@@ -102,7 +123,8 @@ export function App() {
     setError('');
     setDrafts([]);
     try {
-      const result = await api.generate(sourceText, inputRecordId, selectedContactIds);
+      const activeIds = selectedContactIds.filter((id) => contacts.some((contact) => contact.id === id && contact.active));
+      const result = await api.generate(sourceText, inputRecordId, activeIds);
       setDrafts(result.drafts.map((draft) => ({ ...draft, selected: true, editedContent: draft.content })));
       setStatus(`已生成 ${result.drafts.length} 条角色化草稿`);
     } catch (err) {
@@ -161,12 +183,62 @@ export function App() {
   async function updateContact(id: number, patch: Partial<Contact>) {
     const updated = await api.updateContact(id, patch);
     setContacts((current) => current.map((contact) => (contact.id === id ? updated : contact)));
+    if (patch.active === false) {
+      setSelectedContactIds((current) => current.filter((contactId) => contactId !== id));
+    }
   }
 
   async function removeContact(id: number) {
+    const contact = contacts.find((item) => item.id === id);
+    if (contact?.active) {
+      setError('请先停用收件人，再执行删除');
+      return;
+    }
+    if (!window.confirm(`确定永久删除「${contact?.name || '未命名联系人'}」吗？`)) return;
     await api.deleteContact(id);
     setContacts((current) => current.filter((contact) => contact.id !== id));
     setSelectedContactIds((current) => current.filter((contactId) => contactId !== id));
+    setStatus('联系人已删除');
+  }
+
+  async function updateFilteredContacts(active: boolean) {
+    if (!filteredContacts.length) return;
+    setBusy('contacts-batch');
+    setError('');
+    try {
+      const updatedContacts = await Promise.all(
+        filteredContacts.map((contact) => api.updateContact(contact.id, { active })),
+      );
+      const updatedMap = new Map(updatedContacts.map((contact) => [contact.id, contact]));
+      setContacts((current) => current.map((contact) => updatedMap.get(contact.id) ?? contact));
+      if (!active) {
+        const updatedIds = new Set(updatedContacts.map((contact) => contact.id));
+        setSelectedContactIds((current) => current.filter((id) => !updatedIds.has(id)));
+      }
+      setStatus(`已${active ? '启用' : '停用'} ${updatedContacts.length} 位当前筛选收件人`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy('');
+    }
+  }
+
+  async function deleteFilteredContacts() {
+    if (!filteredContacts.length || filteredContacts.some((contact) => contact.active)) return;
+    if (!window.confirm(`确定永久删除当前筛选出的 ${filteredContacts.length} 位停用收件人吗？`)) return;
+    setBusy('contacts-batch');
+    setError('');
+    try {
+      await Promise.all(filteredContacts.map((contact) => api.deleteContact(contact.id)));
+      const deletedIds = new Set(filteredContacts.map((contact) => contact.id));
+      setContacts((current) => current.filter((contact) => !deletedIds.has(contact.id)));
+      setSelectedContactIds((current) => current.filter((id) => !deletedIds.has(id)));
+      setStatus(`已删除 ${deletedIds.size} 位停用收件人`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy('');
+    }
   }
 
   async function saveRole(role: Role) {
@@ -175,11 +247,13 @@ export function App() {
     setStatus(`${role.label} 角色偏好已保存`);
   }
 
-  const selectedCount = selectedContactIds.length;
+  const selectedCount = selectedContactIds.filter((id) => contacts.some((contact) => contact.id === id && contact.active)).length;
   const canGenerate = sourceText.trim() && selectedCount > 0 && busy !== 'generate';
   const selectedDraftCount = drafts.filter((draft) => draft.selected).length;
   const activeContactCount = contacts.filter((contact) => contact.active).length;
+  const inactiveContactCount = contacts.length - activeContactCount;
   const currentRoleKey = roleEditKey || roles[0]?.key;
+  const canDeleteFilteredContacts = filteredContacts.length > 0 && filteredContacts.every((contact) => !contact.active);
 
   return (
     <main className="shell">
@@ -270,16 +344,83 @@ export function App() {
               <p>每个人收到适合自己岗位的版本</p>
             </div>
           </div>
+          <div className="contact-toolbar">
+            <label className="search-field">
+              <Search size={16} />
+              <input
+                aria-label="搜索收件人姓名或 Webhook"
+                value={contactSearch}
+                placeholder="搜索姓名 / Webhook"
+                onChange={(event) => setContactSearch(event.target.value)}
+              />
+            </label>
+            <select
+              aria-label="按角色筛选收件人"
+              value={contactRoleFilter}
+              onChange={(event) => setContactRoleFilter(event.target.value)}
+            >
+              <option value="all">全部角色</option>
+              {roles.map((role) => (
+                <option key={role.key} value={role.key}>{role.label}</option>
+              ))}
+            </select>
+            <div className="segmented-control" aria-label="按启用状态筛选收件人">
+              <button
+                className={contactStatusFilter === 'active' ? 'active' : ''}
+                onClick={() => setContactStatusFilter('active')}
+              >
+                启用
+              </button>
+              <button
+                className={contactStatusFilter === 'inactive' ? 'active' : ''}
+                onClick={() => setContactStatusFilter('inactive')}
+              >
+                停用
+              </button>
+              <button
+                className={contactStatusFilter === 'all' ? 'active' : ''}
+                onClick={() => setContactStatusFilter('all')}
+              >
+                全部
+              </button>
+            </div>
+          </div>
+          <div className="contact-summary">
+            <span>当前 {filteredContacts.length} 位</span>
+            <span>{activeContactCount} 启用</span>
+            <span>{inactiveContactCount} 停用</span>
+          </div>
+          <div className="bulk-actions">
+            <button onClick={() => updateFilteredContacts(true)} disabled={!filteredContacts.length || busy === 'contacts-batch'}>
+              <ToggleRight size={17} />
+              启用当前筛选
+            </button>
+            <button onClick={() => updateFilteredContacts(false)} disabled={!filteredContacts.length || busy === 'contacts-batch'}>
+              <ToggleLeft size={17} />
+              停用当前筛选
+            </button>
+            <button
+              className="danger-action"
+              onClick={deleteFilteredContacts}
+              disabled={!canDeleteFilteredContacts || busy === 'contacts-batch'}
+            >
+              <Trash2 size={17} />
+              删除停用项
+            </button>
+          </div>
           <div className="contact-list">
-            {contacts.map((contact) => {
+            {filteredContacts.length === 0 ? (
+              <div className="empty-state compact">当前筛选下没有收件人。</div>
+            ) : filteredContacts.map((contact) => {
               const role = roleMap.get(contact.roleKey);
               const selected = selectedContactIds.includes(contact.id);
               return (
-                <div className="contact-row" key={contact.id}>
+                <div className={`contact-row ${contact.active ? '' : 'inactive'}`} key={contact.id}>
                   <input
                     aria-label={`选择 ${contact.name || '未命名联系人'}`}
                     type="checkbox"
                     checked={selected}
+                    disabled={!contact.active}
                     onChange={(event) => {
                       setSelectedContactIds((current) =>
                         event.target.checked
@@ -300,9 +441,18 @@ export function App() {
                     placeholder="Webhook URL"
                     onChange={(event) => updateContact(contact.id, { webhookUrl: event.target.value })}
                   />
-                  <button className="icon-button danger" onClick={() => removeContact(contact.id)} title="删除联系人">
-                    <Trash2 size={16} />
+                  <button
+                    className={`icon-button ${contact.active ? 'enabled' : ''}`}
+                    onClick={() => updateContact(contact.id, { active: !contact.active })}
+                    title={contact.active ? '停用收件人' : '启用收件人'}
+                  >
+                    {contact.active ? <ToggleRight size={17} /> : <ToggleLeft size={17} />}
                   </button>
+                  {!contact.active && (
+                    <button className="icon-button danger" onClick={() => removeContact(contact.id)} title="删除联系人">
+                      <Trash2 size={16} />
+                    </button>
+                  )}
                   <small>{role?.defaultPreference}</small>
                 </div>
               );
