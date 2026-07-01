@@ -19,6 +19,7 @@ describe('model router', () => {
   });
 
   it('normalizes explicit provider names', () => {
+    expect(resolveTextProvider('deepseek')).toBe(deepSeekProvider);
     expect(resolveTextProvider('DEEPSEEK')).toBe(deepSeekProvider);
     expect(resolveTextProvider(' deepseek ')).toBe(deepSeekProvider);
   });

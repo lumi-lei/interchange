@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { buildDraftMessages } from '../server/ai/prompts.js';
 import type { DraftRequest, TextModelProvider } from '../server/ai/types.js';
 
 const createMock = vi.fn();
@@ -39,10 +40,16 @@ describe('DeepSeek provider', () => {
     try {
       config.deepseekApiKey = '';
 
-      await expect(deepSeekProvider.generateDraft(sampleDraftRequest())).rejects.toMatchObject({
-        status: 503,
-        message: expect.stringContaining('DEEPSEEK_API_KEY'),
-      });
+      try {
+        await deepSeekProvider.generateDraft(sampleDraftRequest());
+        throw new Error('Expected DeepSeek provider to reject without DEEPSEEK_API_KEY');
+      } catch (error) {
+        expect(error).toMatchObject({
+          status: 503,
+          message: expect.stringContaining('DEEPSEEK_API_KEY'),
+        });
+        expect((error as Error).message).not.toContain('sk-real-key-must-not-appear');
+      }
       expect(constructorMock).not.toHaveBeenCalled();
       expect(createMock).not.toHaveBeenCalled();
     } finally {
@@ -73,6 +80,7 @@ describe('DeepSeek provider', () => {
       expect(createMock).toHaveBeenCalledWith(expect.objectContaining({
         model: 'deepseek-v4-flash',
         stream: false,
+        messages: buildDraftMessages(sampleDraftRequest()),
       }));
 
       const request = createMock.mock.calls[0][0];

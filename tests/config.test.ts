@@ -52,6 +52,23 @@ describe('server config', () => {
     expect(config.uploadLimitMb).toBe(25);
   });
 
+  it('treats disabled external providers as unavailable with readable messages', async () => {
+    await importConfigWithEnv();
+    const {
+      disabledExternalModelMessages,
+      isFileProviderEnabled,
+      isVisionProviderEnabled,
+      assertExternalFileModelAllowed,
+    } = await import('../server/ai/compliance.js');
+
+    expect(isVisionProviderEnabled()).toBe(false);
+    expect(isFileProviderEnabled()).toBe(false);
+    expect(() => assertExternalFileModelAllowed('vision')).toThrow(disabledExternalModelMessages.vision);
+    expect(() => assertExternalFileModelAllowed('file')).toThrow(disabledExternalModelMessages.file);
+    expect(disabledExternalModelMessages.vision).toContain('not configured');
+    expect(disabledExternalModelMessages.file).toContain('not configured');
+  });
+
   it('throws a readable 503 when DEEPSEEK_API_KEY is missing without exposing secrets', async () => {
     const { config, requireDeepSeekKey } = await importConfigWithEnv({
       DEEPSEEK_API_KEY: 'sk-real-key-must-not-appear',
