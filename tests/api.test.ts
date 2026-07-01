@@ -162,7 +162,10 @@ describe('Interchange API', () => {
     });
 
     expect(messages[0].content).toContain('保留事实');
+    expect(messages[1].content).toContain('收件人：AI');
+    expect(messages[1].content).toContain('角色：我的 AI 编程工具');
     expect(messages[1].content).toContain('角色关注点：默认偏好\n自定义偏好\n联系人偏好');
+    expect(messages[1].content).toContain('变更：新增联系人管理。');
   });
 
   it('returns a readable error for missing or unsupported text model providers', async () => {
