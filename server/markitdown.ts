@@ -1,5 +1,5 @@
 import { execFile, type ExecFileException } from 'node:child_process';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { config } from './config.js';
@@ -10,9 +10,11 @@ export type MarkItDownInput = {
   filename?: string;
 };
 
+export type MarkItDownErrorType = 'command_not_found' | 'timeout' | 'failed' | 'empty_output';
+
 export type MarkItDownResult =
   | { ok: true; text: string }
-  | { ok: false; message: string; stderr?: string };
+  | { ok: false; type: MarkItDownErrorType; message: string; stderr?: string };
 
 type ExecFileFailure = {
   error: ExecFileException;
@@ -20,10 +22,18 @@ type ExecFileFailure = {
   stderr: string;
 };
 
-const diagnosticLimit = 1000;
+const diagnosticLimit = 500;
+const missingCliMessage =
+  "MarkItDown CLI is not available. Install it with pip install 'markitdown[all]' or configure MARKITDOWN_COMMAND.";
 
-function truncateDiagnostic(text: string) {
-  return text.length > diagnosticLimit ? `${text.slice(0, diagnosticLimit)}...` : text;
+function truncateDiagnostic(text: string, tempDir = '') {
+  const cwd = process.cwd();
+  const tmp = os.tmpdir();
+  const sanitized = text
+    .replaceAll(tempDir, '[path]')
+    .replaceAll(cwd, '[path]')
+    .replaceAll(tmp, '[path]');
+  return sanitized.length > diagnosticLimit ? `${sanitized.slice(0, diagnosticLimit)}...` : sanitized;
 }
 
 function fileNameForInput(input: MarkItDownInput) {
@@ -31,14 +41,14 @@ function fileNameForInput(input: MarkItDownInput) {
   return path.basename(candidate) || 'upload';
 }
 
-function runMarkItDown(command: string, inputPath: string) {
+function runMarkItDown(command: string, inputPath: string, outputPath: string) {
   return new Promise<{ stdout: string; stderr: string }>((resolve, reject: (failure: ExecFileFailure) => void) => {
     execFile(
       command,
-      [inputPath],
+      [inputPath, '-o', outputPath],
       {
         encoding: 'utf8',
-        maxBuffer: 50 * 1024 * 1024,
+        maxBuffer: 10 * 1024 * 1024,
         timeout: config.markitdownTimeoutMs,
       },
       (error, stdout, stderr) => {
@@ -58,14 +68,41 @@ function runMarkItDown(command: string, inputPath: string) {
   });
 }
 
-function readableExecFailure(command: string, failure: ExecFileFailure) {
+function classifyExecFailure(failure: ExecFileFailure, tempDir: string): MarkItDownResult {
   const { error, stderr } = failure;
   const code = typeof error.code === 'string' ? error.code : String(error.code ?? '');
-  if (code === 'ENOENT') return `MarkItDown command not found: ${command}`;
-  if (error.killed) return `MarkItDown timed out after ${config.markitdownTimeoutMs}ms`;
+  const diagnostic = truncateDiagnostic(stderr.trim() || error.message, tempDir);
+  const stderrText = truncateDiagnostic(stderr.trim(), tempDir);
 
-  const detail = truncateDiagnostic(stderr.trim() || error.message);
-  return `MarkItDown failed${code ? ` (${code})` : ''}: ${detail}`;
+  if (code === 'ENOENT') {
+    return { ok: false, type: 'command_not_found', message: missingCliMessage };
+  }
+
+  if (error.killed || error.signal === 'SIGTERM') {
+    const message = `MarkItDown conversion timed out after ${config.markitdownTimeoutMs}ms.`;
+    return { ok: false, type: 'timeout', message, stderr: stderrText || undefined };
+  }
+
+  return {
+    ok: false,
+    type: 'failed',
+    message: `MarkItDown conversion failed${code ? ` (${code})` : ''}${diagnostic ? `: ${diagnostic}` : '.'}`,
+    stderr: stderrText || undefined,
+  };
+}
+
+async function readMarkdownOutput(outputPath: string, stdout: string) {
+  let output = '';
+
+  try {
+    output = await readFile(outputPath, 'utf8');
+  } catch (error) {
+    if (!error || typeof error !== 'object' || (error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      throw error;
+    }
+  }
+
+  return (output || stdout).trim();
 }
 
 export async function convertWithMarkItDown(input: MarkItDownInput): Promise<MarkItDownResult> {
@@ -74,30 +111,29 @@ export async function convertWithMarkItDown(input: MarkItDownInput): Promise<Mar
   try {
     tempDir = await mkdtemp(path.join(os.tmpdir(), 'interchange-markitdown-'));
     const inputPath = path.join(tempDir, fileNameForInput(input));
+    const outputPath = path.join(tempDir, 'output.md');
     await writeFile(inputPath, input.buffer);
 
-    const { stdout, stderr } = await runMarkItDown(config.markitdownCommand, inputPath);
-    const stderrText = truncateDiagnostic(stderr.trim());
-    if (stderrText) {
-      return { ok: false, message: `MarkItDown wrote to stderr: ${stderrText}`, stderr: stderrText };
+    const { stdout, stderr } = await runMarkItDown(config.markitdownCommand, inputPath, outputPath);
+    const text = await readMarkdownOutput(outputPath, stdout);
+    if (!text) {
+      const stderrText = truncateDiagnostic(stderr.trim(), tempDir);
+      return {
+        ok: false,
+        type: 'empty_output',
+        message: stderrText ? `MarkItDown returned empty output: ${stderrText}` : 'MarkItDown returned empty output.',
+        stderr: stderrText || undefined,
+      };
     }
-
-    const text = stdout.trim();
-    if (!text) return { ok: false, message: 'MarkItDown returned empty output' };
 
     return { ok: true, text };
   } catch (error) {
     if (error && typeof error === 'object' && 'error' in error) {
-      const failure = error as ExecFileFailure;
-      return {
-        ok: false,
-        message: readableExecFailure(config.markitdownCommand, failure),
-        stderr: truncateDiagnostic(failure.stderr.trim()) || undefined,
-      };
+      return classifyExecFailure(error as ExecFileFailure, tempDir);
     }
 
-    const message = truncateDiagnostic(error instanceof Error ? error.message : String(error));
-    return { ok: false, message: `MarkItDown could not run: ${message}` };
+    const message = truncateDiagnostic(error instanceof Error ? error.message : String(error), tempDir);
+    return { ok: false, type: 'failed', message: `MarkItDown could not run: ${message}` };
   } finally {
     if (tempDir) await rm(tempDir, { recursive: true, force: true });
   }

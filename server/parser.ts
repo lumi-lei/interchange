@@ -25,6 +25,7 @@ const markitdownSourceTypes = new Map<string, string>([
   ['.htm', 'markdown'],
   ['.pptx', 'markdown'],
 ]);
+const markitdownOnlyExts = new Set(['.html', '.htm', '.pptx']);
 
 function isImageInput(file: Express.Multer.File, ext: string) {
   return imageExts.has(ext) || file.mimetype.startsWith('image/');
@@ -103,9 +104,19 @@ export async function parseUploadedFile(file: Express.Multer.File): Promise<Pars
   const markitdownSourceType = markitdownSourceTypes.get(ext);
   if (markitdownSourceType) {
     const result = await convertWithMarkItDown(file);
+    let markitdownFailureMessage = '';
     if (result.ok) {
       const text = result.text.trim();
       if (text) return { sourceType: markitdownSourceType, filename, text };
+      markitdownFailureMessage = 'MarkItDown returned empty output.';
+    } else {
+      markitdownFailureMessage = result.message;
+    }
+
+    if (markitdownOnlyExts.has(ext)) {
+      const error = new Error(`Unable to parse ${ext} with MarkItDown: ${markitdownFailureMessage}`);
+      Object.assign(error, { status: 415 });
+      throw error;
     }
   }
 

@@ -83,6 +83,48 @@ describe('parser MarkItDown fallback', () => {
     expect(mocks.extractRawText).toHaveBeenCalledWith({ buffer: expect.any(Buffer) });
   });
 
+  it('falls back to mammoth for .docx when MarkItDown is not installed', async () => {
+    mocks.convertWithMarkItDown.mockResolvedValueOnce({
+      ok: false,
+      type: 'command_not_found',
+      message:
+        "MarkItDown CLI is not available. Install it with pip install 'markitdown[all]' or configure MARKITDOWN_COMMAND.",
+    });
+
+    const parsed = await parseUploadedFile(upload('brief.docx', 'docx-ish'));
+
+    expect(parsed.text).toBe('Built-in Word text');
+    expect(mocks.extractRawText).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to pdf-parse when MarkItDown times out', async () => {
+    mocks.convertWithMarkItDown.mockResolvedValueOnce({
+      ok: false,
+      type: 'timeout',
+      message: 'MarkItDown conversion timed out after 15000ms.',
+    });
+
+    const parsed = await parseUploadedFile(upload('brief.pdf', '%PDF-ish'));
+
+    expect(parsed.text).toBe('Built-in PDF text');
+    expect(mocks.pdfGetText).toHaveBeenCalledTimes(1);
+    expect(mocks.pdfDestroy).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to read-excel-file when MarkItDown exits non-zero with stderr', async () => {
+    mocks.convertWithMarkItDown.mockResolvedValueOnce({
+      ok: false,
+      type: 'failed',
+      message: 'MarkItDown conversion failed (1): missing optional dependency',
+      stderr: 'missing optional dependency',
+    });
+
+    const parsed = await parseUploadedFile(upload('data.xlsx', 'xlsx-ish'));
+
+    expect(parsed.text).toBe('Name,Value\nalpha,1');
+    expect(mocks.readSheet).toHaveBeenCalledTimes(1);
+  });
+
   it('falls back to pdf-parse for .pdf and always destroys the parser', async () => {
     const file = upload('brief.pdf', '%PDF-ish');
 
@@ -169,7 +211,7 @@ describe('parser MarkItDown fallback', () => {
   it('returns 415 for .pptx when MarkItDown fails', async () => {
     await expect(parseUploadedFile(upload('deck.pptx', 'pptx-ish'))).rejects.toMatchObject({
       status: 415,
-      message: 'Unsupported file type: .pptx',
+      message: 'Unable to parse .pptx with MarkItDown: MarkItDown unavailable',
     });
   });
 
@@ -186,7 +228,7 @@ describe('parser MarkItDown fallback', () => {
   it('returns 415 for .html when MarkItDown fails', async () => {
     await expect(parseUploadedFile(upload('page.html', '<h1>Page heading</h1>', 'text/html'))).rejects.toMatchObject({
       status: 415,
-      message: 'Unsupported file type: .html',
+      message: 'Unable to parse .html with MarkItDown: MarkItDown unavailable',
     });
   });
 

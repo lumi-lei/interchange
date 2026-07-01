@@ -22,8 +22,8 @@ export const config = {
   fileModelProvider: providerEnv(process.env.FILE_MODEL_PROVIDER, DISABLED_EXTERNAL_MODEL_PROVIDER) as ExternalModelProviderName,
   largeTextLimit: Number(process.env.LARGE_TEXT_LIMIT ?? 30000),
   uploadLimitMb: Number(process.env.UPLOAD_LIMIT_MB ?? 25),
-  markitdownCommand: process.env.MARKITDOWN_COMMAND?.trim() || 'markitdown',
-  markitdownTimeoutMs: Number(process.env.MARKITDOWN_TIMEOUT_MS ?? 30000),
+  markitdownCommand: process.env.MARKITDOWN_COMMAND ?? 'markitdown',
+  markitdownTimeoutMs: Number(process.env.MARKITDOWN_TIMEOUT_MS ?? 15000),
 };
 
 export function requireDeepSeekKey() {

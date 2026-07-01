@@ -53,7 +53,7 @@ describe('server config', () => {
     expect(config.largeTextLimit).toBe(30000);
     expect(config.uploadLimitMb).toBe(25);
     expect(config.markitdownCommand).toBe('markitdown');
-    expect(config.markitdownTimeoutMs).toBe(30000);
+    expect(config.markitdownTimeoutMs).toBe(15000);
   });
 
   it('treats disabled external providers as unavailable with readable messages', async () => {
