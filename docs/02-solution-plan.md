@@ -57,6 +57,16 @@ The server builds a structured prompt with:
 
 The default model is `deepseek-v4-flash`. `DEEPSEEK_MODEL` can override it, and `deepseek-v4-pro` can be used when higher reasoning quality is needed.
 
+## External Model and File Compliance Boundary
+
+By default, the only external model path is the DeepSeek text model. It receives `sourceText` plus recipient role and preference context from `/api/generate`.
+
+Original uploaded files are not sent to third-party vision or file models by default. `VISION_MODEL_PROVIDER=none` and `FILE_MODEL_PROVIDER=none` are the default safety policy, where `none` means the external provider is disabled.
+
+Word, PDF, Excel, image, and scanned PDF uploads are parsed locally first. Images use local Tesseract.js OCR, and only the editable OCR text can enter the later DeepSeek generation flow. `/api/generate` continues to consume only `sourceText`; it does not accept, read, or upload original attachments.
+
+If local parsing returns no text, the API returns a readable 422 error explaining that the relevant vision or file model provider is not configured and the file was not sent to an external model. Enabling any future external vision or file provider requires explicit environment configuration plus business confirmation of cost, compliance, data scope, and user-facing notice.
+
 ## File Parsing
 
 - Text and Markdown: decode UTF-8 buffer.

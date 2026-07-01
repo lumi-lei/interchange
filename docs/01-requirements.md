@@ -30,6 +30,8 @@ Images are processed with OCR first. The extracted text is editable before it is
 
 Legacy binary `.xls` files are not part of the MVP parser. Users should save those spreadsheets as `.xlsx` or `.csv`.
 
+Original uploaded files are not sent to third-party vision or file models by default. The default configuration keeps `VISION_MODEL_PROVIDER=none` and `FILE_MODEL_PROVIDER=none`; only editable `sourceText` is sent to the DeepSeek text model during generation.
+
 ## Built-in Roles
 
 - Product

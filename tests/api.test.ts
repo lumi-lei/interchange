@@ -5,6 +5,12 @@ import { createServer, type Server } from 'node:http';
 import { createApp } from '../server/index.js';
 import { db } from '../server/db.js';
 import { config } from '../server/config.js';
+import {
+  assertExternalFileModelAllowed,
+  disabledExternalModelMessages,
+  isFileProviderEnabled,
+  isVisionProviderEnabled,
+} from '../server/ai/compliance.js';
 import { buildDraftMessages } from '../server/ai/prompts.js';
 import { deepSeekProvider } from '../server/ai/providers/deepseek.js';
 import { generateDraft as routeDraft, resolveTextProvider } from '../server/ai/modelRouter.js';
@@ -102,6 +108,45 @@ describe('Interchange API', () => {
       expect(resolveTextProvider()).toBe(deepSeekProvider);
     } finally {
       config.textModelProvider = originalProvider;
+    }
+  });
+
+  it('disables external vision and file model providers by default', () => {
+    expect(config.visionModelProvider).toBe('none');
+    expect(config.fileModelProvider).toBe('none');
+    expect(isVisionProviderEnabled()).toBe(false);
+    expect(isFileProviderEnabled()).toBe(false);
+  });
+
+  it('returns readable errors when external vision or file providers are disabled', () => {
+    const originalVisionProvider = config.visionModelProvider;
+    const originalFileProvider = config.fileModelProvider;
+    try {
+      config.visionModelProvider = 'none';
+      config.fileModelProvider = 'none';
+
+      expect(() => assertExternalFileModelAllowed('vision')).toThrow(disabledExternalModelMessages.vision);
+      expect(() => assertExternalFileModelAllowed('file')).toThrow(disabledExternalModelMessages.file);
+    } finally {
+      config.visionModelProvider = originalVisionProvider;
+      config.fileModelProvider = originalFileProvider;
+    }
+  });
+
+  it('does not call an external model path when local file parsing returns no text', async () => {
+    const originalFileProvider = config.fileModelProvider;
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      config.fileModelProvider = 'none';
+      const response = await request(createApp())
+        .post('/api/inputs/parse')
+        .attach('file', Buffer.alloc(0), { filename: 'empty.txt', contentType: 'text/plain' })
+        .expect(422);
+
+      expect(response.body.error).toBe(disabledExternalModelMessages.file);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      config.fileModelProvider = originalFileProvider;
     }
   });
 

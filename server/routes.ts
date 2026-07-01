@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { config } from './config.js';
 import { repo } from './db.js';
 import { generateDraft } from './ai/modelRouter.js';
+import { assertExternalFileModelAllowed, externalModelKindForSource } from './ai/compliance.js';
 import { parseUploadedFile } from './parser.js';
 import { isRoleKey, type RoleKey } from './roles.js';
 
@@ -73,7 +74,12 @@ router.post('/inputs/parse', upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Text or file is required' });
 
   const parsed = await parseUploadedFile(req.file);
-  if (!parsed.text) return res.status(422).json({ error: 'No text could be extracted from this file' });
+  if (!parsed.text) {
+    assertExternalFileModelAllowed(externalModelKindForSource(parsed.sourceType));
+    return res.status(422).json({
+      error: 'No text could be extracted by local parsing. External model fallback is not implemented in this build.',
+    });
+  }
   const inputRecordId = repo.createInputRecord(parsed.sourceType, parsed.filename, parsed.text);
   res.json({ inputRecordId, ...parsed });
 });
