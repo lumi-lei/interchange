@@ -3,7 +3,7 @@ import multer from 'multer';
 import { z } from 'zod';
 import { config } from './config.js';
 import { repo } from './db.js';
-import { generateDraft } from './deepseek.js';
+import { generateDraft } from './ai/modelRouter.js';
 import { parseUploadedFile } from './parser.js';
 import { isRoleKey, type RoleKey } from './roles.js';
 
@@ -181,4 +181,3 @@ router.get('/records', (_req, res) => {
 });
 
 export { router, upload };
-

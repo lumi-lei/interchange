@@ -8,6 +8,10 @@ export const config = {
   sqlitePath: path.resolve(root, process.env.SQLITE_PATH ?? './data/interchange.sqlite'),
   deepseekApiKey: process.env.DEEPSEEK_API_KEY ?? '',
   deepseekModel: process.env.DEEPSEEK_MODEL ?? 'deepseek-v4-flash',
+  textModelProvider: process.env.TEXT_MODEL_PROVIDER ?? 'deepseek',
+  visionModelProvider: process.env.VISION_MODEL_PROVIDER ?? 'none',
+  fileModelProvider: process.env.FILE_MODEL_PROVIDER ?? 'none',
+  largeTextLimit: Number(process.env.LARGE_TEXT_LIMIT ?? 30000),
   uploadLimitMb: Number(process.env.UPLOAD_LIMIT_MB ?? 25),
 };
 
@@ -18,4 +22,3 @@ export function requireDeepSeekKey() {
     throw error;
   }
 }
-
