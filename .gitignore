@@ -1,4 +1,6 @@
 node_modules/
+.venv-markitdown/
+.firecrawl/
 dist/
 dist-server/
 data/
@@ -6,5 +8,7 @@ data/
 !.env.example
 .DS_Store
 *.log
+sample.converted.md
+sample.pptx
 coverage/
 .vite/
