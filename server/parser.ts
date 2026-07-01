@@ -19,23 +19,30 @@ const markitdownSourceTypes = new Map<string, string>([
   ['.pdf', 'pdf'],
   ['.xlsx', 'excel'],
   ['.xls', 'excel'],
+  ['.xlsm', 'excel'],
   ['.csv', 'excel'],
   ['.html', 'markdown'],
   ['.htm', 'markdown'],
   ['.pptx', 'markdown'],
 ]);
 
-export async function parseUploadedFile(file: Express.Multer.File): Promise<ParsedInput> {
+function isImageInput(file: Express.Multer.File, ext: string) {
+  return imageExts.has(ext) || file.mimetype.startsWith('image/');
+}
+
+function isTextInput(file: Express.Multer.File, ext: string) {
+  return textExts.has(ext) || (!markitdownSourceTypes.has(ext) && file.mimetype.startsWith('text/'));
+}
+
+function unsupportedFileType(file: Express.Multer.File, ext: string) {
+  const error = new Error(`Unsupported file type: ${ext || file.mimetype}`);
+  Object.assign(error, { status: 415 });
+  return error;
+}
+
+export async function parseWithBuiltInParser(file: Express.Multer.File): Promise<ParsedInput> {
   const filename = file.originalname ?? 'upload';
   const ext = path.extname(filename).toLowerCase();
-
-  const markitdownSourceType = markitdownSourceTypes.get(ext);
-  if (markitdownSourceType) {
-    const result = await convertWithMarkItDown(file);
-    if (result.ok) {
-      return { sourceType: markitdownSourceType, filename, text: result.text };
-    }
-  }
 
   if (ext === '.docx') {
     const result = await mammoth.extractRawText({ buffer: file.buffer });
@@ -68,11 +75,11 @@ export async function parseUploadedFile(file: Express.Multer.File): Promise<Pars
     return { sourceType: 'excel', filename, text: text.trim() };
   }
 
-  if (textExts.has(ext) || file.mimetype.startsWith('text/')) {
+  if (isTextInput(file, ext)) {
     return { sourceType: 'text', filename, text: file.buffer.toString('utf8') };
   }
 
-  if (imageExts.has(ext) || file.mimetype.startsWith('image/')) {
+  if (isImageInput(file, ext)) {
     const worker = await createWorker('eng+chi_sim');
     try {
       const result = await worker.recognize(file.buffer);
@@ -82,7 +89,25 @@ export async function parseUploadedFile(file: Express.Multer.File): Promise<Pars
     }
   }
 
-  const error = new Error(`Unsupported file type: ${ext || file.mimetype}`);
-  Object.assign(error, { status: 415 });
-  throw error;
+  throw unsupportedFileType(file, ext);
+}
+
+export async function parseUploadedFile(file: Express.Multer.File): Promise<ParsedInput> {
+  const filename = file.originalname ?? 'upload';
+  const ext = path.extname(filename).toLowerCase();
+
+  if (isTextInput(file, ext) || isImageInput(file, ext)) {
+    return parseWithBuiltInParser(file);
+  }
+
+  const markitdownSourceType = markitdownSourceTypes.get(ext);
+  if (markitdownSourceType) {
+    const result = await convertWithMarkItDown(file);
+    if (result.ok) {
+      const text = result.text.trim();
+      if (text) return { sourceType: markitdownSourceType, filename, text };
+    }
+  }
+
+  return parseWithBuiltInParser(file);
 }

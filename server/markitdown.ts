@@ -20,6 +20,12 @@ type ExecFileFailure = {
   stderr: string;
 };
 
+const diagnosticLimit = 1000;
+
+function truncateDiagnostic(text: string) {
+  return text.length > diagnosticLimit ? `${text.slice(0, diagnosticLimit)}...` : text;
+}
+
 function fileNameForInput(input: MarkItDownInput) {
   const candidate = input.originalname ?? input.filename ?? 'upload';
   return path.basename(candidate) || 'upload';
@@ -58,7 +64,7 @@ function readableExecFailure(command: string, failure: ExecFileFailure) {
   if (code === 'ENOENT') return `MarkItDown command not found: ${command}`;
   if (error.killed) return `MarkItDown timed out after ${config.markitdownTimeoutMs}ms`;
 
-  const detail = stderr.trim() || error.message;
+  const detail = truncateDiagnostic(stderr.trim() || error.message);
   return `MarkItDown failed${code ? ` (${code})` : ''}: ${detail}`;
 }
 
@@ -71,7 +77,7 @@ export async function convertWithMarkItDown(input: MarkItDownInput): Promise<Mar
     await writeFile(inputPath, input.buffer);
 
     const { stdout, stderr } = await runMarkItDown(config.markitdownCommand, inputPath);
-    const stderrText = stderr.trim();
+    const stderrText = truncateDiagnostic(stderr.trim());
     if (stderrText) {
       return { ok: false, message: `MarkItDown wrote to stderr: ${stderrText}`, stderr: stderrText };
     }
@@ -86,11 +92,11 @@ export async function convertWithMarkItDown(input: MarkItDownInput): Promise<Mar
       return {
         ok: false,
         message: readableExecFailure(config.markitdownCommand, failure),
-        stderr: failure.stderr.trim() || undefined,
+        stderr: truncateDiagnostic(failure.stderr.trim()) || undefined,
       };
     }
 
-    const message = error instanceof Error ? error.message : String(error);
+    const message = truncateDiagnostic(error instanceof Error ? error.message : String(error));
     return { ok: false, message: `MarkItDown could not run: ${message}` };
   } finally {
     if (tempDir) await rm(tempDir, { recursive: true, force: true });
