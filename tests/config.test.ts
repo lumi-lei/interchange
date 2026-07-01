@@ -10,6 +10,8 @@ const CONFIG_ENV_KEYS = [
   'PORT',
   'SQLITE_PATH',
   'UPLOAD_LIMIT_MB',
+  'MARKITDOWN_COMMAND',
+  'MARKITDOWN_TIMEOUT_MS',
   'DOTENV_CONFIG_PATH',
 ] as const;
 
@@ -50,6 +52,8 @@ describe('server config', () => {
     expect(config.deepseekModel).toBe('deepseek-v4-flash');
     expect(config.largeTextLimit).toBe(30000);
     expect(config.uploadLimitMb).toBe(25);
+    expect(config.markitdownCommand).toBe('markitdown');
+    expect(config.markitdownTimeoutMs).toBe(30000);
   });
 
   it('treats disabled external providers as unavailable with readable messages', async () => {

@@ -3,6 +3,7 @@ import mammoth from 'mammoth';
 import { PDFParse } from 'pdf-parse';
 import { createWorker } from 'tesseract.js';
 import readSheet from 'read-excel-file/node';
+import { convertWithMarkItDown } from './markitdown.js';
 
 export type ParsedInput = {
   sourceType: string;
@@ -13,13 +14,27 @@ export type ParsedInput = {
 const imageExts = new Set(['.png', '.jpg', '.jpeg', '.webp', '.bmp', '.gif']);
 const excelExts = new Set(['.xlsx', '.xls', '.xlsm', '.csv']);
 const textExts = new Set(['.txt', '.md', '.markdown', '.json', '.log']);
+const markitdownSourceTypes = new Map<string, string>([
+  ['.docx', 'word'],
+  ['.pdf', 'pdf'],
+  ['.xlsx', 'excel'],
+  ['.xls', 'excel'],
+  ['.csv', 'excel'],
+  ['.html', 'markdown'],
+  ['.htm', 'markdown'],
+  ['.pptx', 'markdown'],
+]);
 
 export async function parseUploadedFile(file: Express.Multer.File): Promise<ParsedInput> {
   const filename = file.originalname ?? 'upload';
   const ext = path.extname(filename).toLowerCase();
 
-  if (textExts.has(ext) || file.mimetype.startsWith('text/')) {
-    return { sourceType: 'text', filename, text: file.buffer.toString('utf8') };
+  const markitdownSourceType = markitdownSourceTypes.get(ext);
+  if (markitdownSourceType) {
+    const result = await convertWithMarkItDown(file);
+    if (result.ok) {
+      return { sourceType: markitdownSourceType, filename, text: result.text };
+    }
   }
 
   if (ext === '.docx') {
@@ -51,6 +66,10 @@ export async function parseUploadedFile(file: Express.Multer.File): Promise<Pars
       .map((row: unknown[]) => row.map((cell: unknown) => String(cell ?? '')).join(','))
       .join('\n');
     return { sourceType: 'excel', filename, text: text.trim() };
+  }
+
+  if (textExts.has(ext) || file.mimetype.startsWith('text/')) {
+    return { sourceType: 'text', filename, text: file.buffer.toString('utf8') };
   }
 
   if (imageExts.has(ext) || file.mimetype.startsWith('image/')) {
