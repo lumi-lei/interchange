@@ -67,6 +67,7 @@ function sampleDraftRequest(): DraftRequest {
       key: 'my_ai_coding_tool',
       label: '我的 AI 编程工具',
       defaultPreference: '偏好直接给出实现要点。',
+      templatePreference: '模板偏好。',
       customPreference: '',
       updatedAt: '',
     },

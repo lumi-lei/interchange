@@ -66,6 +66,7 @@ export function App() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState('');
   const [roleEditKey, setRoleEditKey] = useState('');
+  const [dirtyRoleKeys, setDirtyRoleKeys] = useState<Set<string>>(new Set());
   const [contactSearch, setContactSearch] = useState('');
   const [contactRoleFilter, setContactRoleFilter] = useState('all');
   const [contactStatusFilter, setContactStatusFilter] = useState<ContactStatusFilter>('active');
@@ -94,6 +95,7 @@ export function App() {
     setContacts(contactData);
     setSelectedContactIds((current) => current.length ? current : contactData.filter((c) => c.active).map((c) => c.id));
     setContactDraft(blankContact(roleData[0]?.key ?? 'product'));
+    setDirtyRoleKeys(new Set());
   }
 
   useEffect(() => {
@@ -123,6 +125,7 @@ export function App() {
     setError('');
     setDrafts([]);
     try {
+      await saveDirtyRolesBeforeGenerate();
       const activeIds = selectedContactIds.filter((id) => contacts.some((contact) => contact.id === id && contact.active));
       const result = await api.generate(sourceText, inputRecordId, activeIds);
       setDrafts(result.drafts.map((draft) => ({ ...draft, selected: true, editedContent: draft.content })));
@@ -132,6 +135,23 @@ export function App() {
     } finally {
       setBusy('');
     }
+  }
+
+  async function saveDirtyRolesBeforeGenerate() {
+    const dirtyRoles = roles.filter((role) => dirtyRoleKeys.has(role.key));
+    if (!dirtyRoles.length) return;
+
+    setStatus(`正在保存 ${dirtyRoles.length} 个角色说话习惯...`);
+    const updatedRoles = await Promise.all(
+      dirtyRoles.map((role) => api.updateRole(role.key, role.customPreference)),
+    );
+    const updatedMap = new Map(updatedRoles.map((role) => [role.key, role]));
+    setRoles((current) => current.map((role) => updatedMap.get(role.key) ?? role));
+    setDirtyRoleKeys((current) => {
+      const next = new Set(current);
+      for (const role of updatedRoles) next.delete(role.key);
+      return next;
+    });
   }
 
   async function sendSelected() {
@@ -244,6 +264,11 @@ export function App() {
   async function saveRole(role: Role) {
     const updated = await api.updateRole(role.key, role.customPreference);
     setRoles((current) => current.map((item) => (item.key === updated.key ? updated : item)));
+    setDirtyRoleKeys((current) => {
+      const next = new Set(current);
+      next.delete(updated.key);
+      return next;
+    });
     setStatus(`${role.label} 角色偏好已保存`);
   }
 
@@ -254,6 +279,7 @@ export function App() {
   const inactiveContactCount = contacts.length - activeContactCount;
   const currentRoleKey = roleEditKey || roles[0]?.key;
   const canDeleteFilteredContacts = filteredContacts.length > 0 && filteredContacts.every((contact) => !contact.active);
+  const dirtyRoleCount = dirtyRoleKeys.size;
 
   return (
     <main className="shell">
@@ -512,18 +538,31 @@ export function App() {
             .map((role) => (
               <div className="role-editor" key={role.key}>
                 <p>{role.defaultPreference}</p>
+                {role.templatePreference && (
+                  <div className="role-template">
+                    <strong>推荐提示词模板</strong>
+                    <pre>{role.templatePreference}</pre>
+                  </div>
+                )}
                 <textarea
                   aria-label={`${role.label} 角色说话习惯`}
                   value={role.customPreference}
                   placeholder="补充你自己的表达偏好，例如：更口语、先说结论、必须列风险..."
-                  onChange={(event) =>
+                  onChange={(event) => {
+                    const customPreference = event.target.value;
                     setRoles((current) =>
                       current.map((item) =>
-                        item.key === role.key ? { ...item, customPreference: event.target.value } : item,
+                        item.key === role.key ? { ...item, customPreference } : item,
                       ),
-                    )
-                  }
+                    );
+                    setDirtyRoleKeys((current) => {
+                      const next = new Set(current);
+                      next.add(role.key);
+                      return next;
+                    });
+                  }}
                 />
+                {dirtyRoleKeys.has(role.key) && <small>有未保存修改，生成前会自动保存。</small>}
                 <button onClick={() => saveRole(role)}>
                   <Save size={17} />
                   保存偏好
@@ -550,7 +589,7 @@ export function App() {
           </div>
           <button className="primary" disabled={!canGenerate} onClick={generate}>
             {busy === 'generate' ? <Loader2 className="spin" size={18} /> : <Sparkles size={18} />}
-            面向角色生成
+            {dirtyRoleCount ? `保存偏好并生成 ${dirtyRoleCount}` : '面向角色生成'}
           </button>
           <button disabled={!selectedDraftCount || busy === 'send'} onClick={sendSelected}>
             {busy === 'send' ? <Loader2 className="spin" size={18} /> : <Send size={18} />}

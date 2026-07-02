@@ -13,6 +13,21 @@ export type RoleDefinition = {
   defaultPreference: string;
 };
 
+export const rolePromptTemplates: Partial<Record<RoleKey, string>> = {
+  my_ai_coding_tool: [
+    '你是当前任务的主执行 AI。请把输入内容转换成可直接执行的编码任务提示词。',
+    '输出应体现：当前目标、允许修改的范围、禁止事项、实施步骤、验收标准、需要先确认的问题。',
+    '优先给出下一步可执行动作，不要写成项目汇报口吻。',
+    '只基于客观信息，不扩展未确认需求，不扩大实现范围。',
+  ].join('\n'),
+  teammate_ai_coding_tool: [
+    '你是同项目协作 AI。请把输入内容转换成协作提示词。',
+    '重点说明与你负责范围相关的边界、接口契约、避免冲突的文件/模块、测试要求和合并注意事项。',
+    '不要重复主执行者的完整任务清单；优先指出协作分工、依赖、风险和需要确认的问题。',
+    '只基于客观信息，不扩展未确认需求，不扩大实现范围。',
+  ].join('\n'),
+};
+
 export const roleDefinitions: RoleDefinition[] = [
   {
     key: 'product',
@@ -55,3 +70,6 @@ export function isRoleKey(value: string): value is RoleKey {
   return roleDefinitions.some((role) => role.key === value);
 }
 
+export function roleTemplatePreference(key: RoleKey) {
+  return rolePromptTemplates[key] ?? '';
+}

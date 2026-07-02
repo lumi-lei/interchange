@@ -628,6 +628,30 @@ input[type='checkbox']:disabled {
   color: var(--muted);
 }
 
+.role-template {
+  margin-bottom: 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(8, 127, 140, 0.06);
+  padding: 10px 12px;
+}
+
+.role-template strong {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--accent-strong);
+  font-size: 0.84rem;
+}
+
+.role-template pre {
+  margin: 0;
+  white-space: pre-wrap;
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
 .role-editor textarea {
   min-height: 110px;
   margin-bottom: 10px;

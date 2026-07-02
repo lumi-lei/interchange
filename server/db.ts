@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import Database from 'better-sqlite3';
 import { config } from './config.js';
-import { roleDefinitions, type RoleKey } from './roles.js';
+import { roleDefinitions, roleTemplatePreference, type RoleKey } from './roles.js';
 
 export type Contact = {
   id: number;
@@ -19,6 +19,7 @@ export type RoleRow = {
   key: RoleKey;
   label: string;
   defaultPreference: string;
+  templatePreference: string;
   customPreference: string;
   updatedAt: string;
 };
@@ -137,6 +138,7 @@ function mapRole(row: any): RoleRow {
     key: row.key,
     label: row.label,
     defaultPreference: row.default_preference,
+    templatePreference: roleTemplatePreference(row.key),
     customPreference: row.custom_preference,
     updatedAt: row.updated_at,
   };
@@ -259,4 +261,3 @@ export const repo = {
     };
   },
 };
-

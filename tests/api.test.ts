@@ -32,6 +32,7 @@ const sampleDraftRequest: DraftRequest = {
     key: 'my_ai_coding_tool',
     label: '我的 AI 编程工具',
     defaultPreference: '偏好直接给出实现要点。',
+    templatePreference: '模板偏好。',
     customPreference: '',
     updatedAt: '',
   },
@@ -161,6 +162,17 @@ describe('Interchange API', () => {
     }
   });
 
+  it('returns built-in AI coding prompt templates separately from custom preferences', async () => {
+    const response = await request(createApp()).get('/api/roles').expect(200);
+    const myAiRole = response.body.find((role: any) => role.key === 'my_ai_coding_tool');
+    const teammateAiRole = response.body.find((role: any) => role.key === 'teammate_ai_coding_tool');
+
+    expect(myAiRole.templatePreference).toContain('主执行 AI');
+    expect(myAiRole.templatePreference).not.toBe(myAiRole.customPreference);
+    expect(teammateAiRole.templatePreference).toContain('同项目协作 AI');
+    expect(teammateAiRole.templatePreference).not.toBe(teammateAiRole.customPreference);
+  });
+
   it('disables external vision and file model providers by default', () => {
     expect(config.visionModelProvider).toBe('none');
     expect(config.fileModelProvider).toBe('none');
@@ -207,14 +219,19 @@ describe('Interchange API', () => {
       role: {
         ...sampleDraftRequest.role,
         defaultPreference: '默认偏好',
+        templatePreference: '模板偏好',
         customPreference: '自定义偏好',
       },
     });
 
     expect(messages[0].content).toContain('保留事实');
+    expect(messages[0].content).toContain('用户自定义补充视为高优先级提示词');
     expect(messages[1].content).toContain('收件人：AI');
     expect(messages[1].content).toContain('角色：我的 AI 编程工具');
-    expect(messages[1].content).toContain('角色关注点：默认偏好\n自定义偏好\n联系人偏好');
+    expect(messages[1].content).toContain('角色默认关注点：默认偏好');
+    expect(messages[1].content).toContain('推荐提示词模板：模板偏好');
+    expect(messages[1].content).toContain('用户自定义补充：自定义偏好');
+    expect(messages[1].content).toContain('收件人补充偏好：联系人偏好');
     expect(messages[1].content).toContain('变更：新增联系人管理。');
   });
 

@@ -2,6 +2,7 @@ export type Role = {
   key: string;
   label: string;
   defaultPreference: string;
+  templatePreference: string;
   customPreference: string;
 };
 
@@ -75,4 +76,3 @@ export const api = {
       },
     ),
 };
-
