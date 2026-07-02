@@ -728,15 +728,41 @@ input[type='checkbox']:disabled {
 }
 
 .draft-head label {
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 8px;
   font-weight: 800;
 }
 
+.draft-head label span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .draft-head small {
   color: var(--accent-strong);
   font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.draft-meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.copy-button {
+  min-height: 32px;
+  padding: 0 10px;
+  border-color: rgba(8, 127, 140, 0.22);
+  border-radius: 999px;
+  color: var(--accent-strong);
+  font-size: 0.84rem;
   font-weight: 800;
 }
 
@@ -827,8 +853,13 @@ input[type='checkbox']:disabled {
   }
 
   .icon-button,
-  .status-strip .icon-button {
+  .status-strip .icon-button,
+  .copy-button {
     width: 34px;
+  }
+
+  .copy-button span {
+    display: none;
   }
 
   .file-button {

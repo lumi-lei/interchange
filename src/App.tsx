@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type MouseEvent, type ReactNode } from 'r
 import {
   Bell,
   Check,
+  Copy,
   Download,
   FileText,
   Loader2,
@@ -63,6 +64,7 @@ export function App() {
   const [markdownDownload, setMarkdownDownload] = useState<{ filename: string; text: string } | null>(null);
   const [inputRecordId, setInputRecordId] = useState<number | null>(null);
   const [drafts, setDrafts] = useState<DraftState[]>([]);
+  const [copiedDraftId, setCopiedDraftId] = useState<number | null>(null);
   const [contactDraft, setContactDraft] = useState<Omit<Contact, 'id'>>(blankContact());
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
@@ -135,6 +137,42 @@ export function App() {
     link.click();
     link.remove();
     URL.revokeObjectURL(url);
+  }
+
+  async function writeClipboard(text: string) {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+
+    const textArea = document.createElement('textarea');
+    textArea.value = text;
+    textArea.setAttribute('readonly', '');
+    textArea.style.position = 'fixed';
+    textArea.style.left = '-9999px';
+    document.body.appendChild(textArea);
+    textArea.select();
+    document.execCommand('copy');
+    textArea.remove();
+  }
+
+  async function copyDraftContent(draft: DraftState) {
+    if (!draft.editedContent.trim()) {
+      setError('待确认消息内容为空，无法复制');
+      return;
+    }
+
+    try {
+      await writeClipboard(draft.editedContent);
+      setError('');
+      setCopiedDraftId(draft.generationRecordId);
+      setStatus(`${draft.contact.name} 的待确认消息已复制`);
+      window.setTimeout(() => {
+        setCopiedDraftId((current) => (current === draft.generationRecordId ? null : current));
+      }, 1600);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '复制失败，请手动选择内容复制');
+    }
   }
 
   async function generate() {
@@ -653,7 +691,18 @@ export function App() {
                     />
                     <span>{draft.contact.name}</span>
                   </label>
-                  <small>{draft.role.label}</small>
+                  <div className="draft-meta">
+                    <small>{draft.role.label}</small>
+                    <button
+                      className="copy-button"
+                      onClick={() => copyDraftContent(draft)}
+                      title="复制这条待确认消息的全部内容"
+                      aria-label={`复制 ${draft.contact.name} 的待确认消息全部内容`}
+                    >
+                      {copiedDraftId === draft.generationRecordId ? <Check size={16} /> : <Copy size={16} />}
+                      <span>{copiedDraftId === draft.generationRecordId ? '已复制' : '复制'}</span>
+                    </button>
+                  </div>
                 </div>
                 <textarea
                   aria-label={`${draft.contact.name} 的待发送消息`}
