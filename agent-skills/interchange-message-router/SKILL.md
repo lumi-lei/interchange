@@ -5,7 +5,7 @@ description: Use the local Interchange web service to transform objective projec
 
 # Interchange Message Router
 
-Use this skill when the user wants to distribute objective project information to multiple human or AI roles without rewriting the message manually.
+Use this skill when the user wants to distribute objective project information to multiple human or AI roles without rewriting the message manually. Contacts may send through generic webhooks or DingTalk group robots, depending on their saved delivery channel.
 
 ## Requirements
 
@@ -31,7 +31,7 @@ Use this skill when the user wants to distribute objective project information t
 ```
 
 7. Show the generated drafts to the user for review.
-8. Only after confirmation, call `POST /send`:
+8. Only after confirmation, call `POST /send`. The server sends each confirmed message through the contact's configured delivery channel:
 
 ```json
 {
@@ -50,5 +50,6 @@ Use this skill when the user wants to distribute objective project information t
 - Preserve objective facts. Do not add commitments, dates, owners, or release promises that were not present in the source.
 - If DeepSeek is not configured, tell the user to configure `DEEPSEEK_API_KEY` in the Interchange `.env`.
 - If a contact has no webhook URL, keep the draft as copyable text and report that it was not sent.
+- DingTalk robot contacts send Markdown messages. Do not ask for or expose DingTalk secrets; the local server only reports whether a secret is configured.
 - When interacting with another codebase, do not infer project changes from memory. Read the relevant files or ask the user for source information.
 

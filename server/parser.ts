@@ -1,6 +1,5 @@
 import path from 'node:path';
 import mammoth from 'mammoth';
-import { PDFParse } from 'pdf-parse';
 import { createWorker } from 'tesseract.js';
 import readSheet from 'read-excel-file/node';
 import { convertWithMarkItDown } from './markitdown.js';
@@ -58,6 +57,7 @@ export async function parseWithBuiltInParser(file: Express.Multer.File): Promise
   }
 
   if (ext === '.pdf') {
+    const { PDFParse } = await import('pdf-parse');
     const parser = new PDFParse({ data: file.buffer });
     try {
       const result = await parser.getText();

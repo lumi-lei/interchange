@@ -19,7 +19,7 @@ import {
   Upload,
   Users,
 } from 'lucide-react';
-import { api, type Contact, type Draft, type Role } from './api';
+import { api, type Contact, type ContactInput, type Draft, type Role } from './api';
 
 type DraftState = Draft & { selected: boolean; editedContent: string; sendStatus?: string };
 type ContactStatusFilter = 'active' | 'inactive' | 'all';
@@ -30,10 +30,12 @@ type AceternityCardProps = {
   as?: 'section' | 'article';
 };
 
-const blankContact = (roleKey = 'product'): Omit<Contact, 'id'> => ({
+const blankContact = (roleKey = 'product'): ContactInput => ({
   name: '',
   roleKey,
+  deliveryType: 'generic_webhook',
   webhookUrl: '',
+  dingtalkKeyword: '',
   preference: '',
   active: true,
 });
@@ -65,7 +67,7 @@ export function App() {
   const [inputRecordId, setInputRecordId] = useState<number | null>(null);
   const [drafts, setDrafts] = useState<DraftState[]>([]);
   const [copiedDraftId, setCopiedDraftId] = useState<number | null>(null);
-  const [contactDraft, setContactDraft] = useState<Omit<Contact, 'id'>>(blankContact());
+  const [contactDraft, setContactDraft] = useState<ContactInput>(blankContact());
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState('');
@@ -86,7 +88,8 @@ export function App() {
       const matchesSearch =
         !query
         || contact.name.toLocaleLowerCase().includes(query)
-        || contact.webhookUrl.toLocaleLowerCase().includes(query);
+        || contact.webhookUrl.toLocaleLowerCase().includes(query)
+        || contact.deliveryType.toLocaleLowerCase().includes(query);
       return matchesStatus && matchesRole && matchesSearch;
     });
   }, [contactRoleFilter, contactSearch, contactStatusFilter, contacts]);
@@ -255,7 +258,7 @@ export function App() {
     }
   }
 
-  async function updateContact(id: number, patch: Partial<Contact>) {
+  async function updateContact(id: number, patch: Partial<ContactInput>) {
     const updated = await api.updateContact(id, patch);
     setContacts((current) => current.map((contact) => (contact.id === id ? updated : contact)));
     if (patch.active === false) {
@@ -523,12 +526,49 @@ export function App() {
                       <option key={item.key} value={item.key}>{item.label}</option>
                     ))}
                   </select>
+                  <select
+                    aria-label="发送通道"
+                    value={contact.deliveryType}
+                    onChange={(event) => updateContact(contact.id, { deliveryType: event.target.value as Contact['deliveryType'] })}
+                  >
+                    <option value="generic_webhook">Webhook</option>
+                    <option value="dingtalk_robot">钉钉机器人</option>
+                  </select>
                   <input
                     aria-label="Webhook URL"
                     value={contact.webhookUrl}
-                    placeholder="Webhook URL"
+                    placeholder={contact.deliveryType === 'dingtalk_robot' ? '钉钉机器人 Webhook URL' : 'Webhook URL'}
                     onChange={(event) => updateContact(contact.id, { webhookUrl: event.target.value })}
                   />
+                  {contact.deliveryType === 'dingtalk_robot' && (
+                    <>
+                      <input
+                        aria-label="钉钉加签 Secret"
+                        type="password"
+                        placeholder={contact.dingtalkSecretConfigured ? 'Secret 已配置，输入可覆盖' : '可选：加签 Secret'}
+                        onBlur={(event) => {
+                          const dingtalkSecret = event.currentTarget.value.trim();
+                          if (!dingtalkSecret) return;
+                          updateContact(contact.id, { dingtalkSecret }).catch((err) => setError(err.message));
+                          event.currentTarget.value = '';
+                        }}
+                      />
+                      <input
+                        aria-label="钉钉安全关键词"
+                        value={contact.dingtalkKeyword}
+                        placeholder="可选：安全关键词"
+                        onChange={(event) => updateContact(contact.id, { dingtalkKeyword: event.target.value })}
+                      />
+                      <button
+                        className="icon-button"
+                        disabled={!contact.dingtalkSecretConfigured}
+                        onClick={() => updateContact(contact.id, { clearDingtalkSecret: true })}
+                        title="清除钉钉 Secret"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </>
+                  )}
                   <button
                     className={`icon-button ${contact.active ? 'enabled' : ''}`}
                     onClick={() => updateContact(contact.id, { active: !contact.active })}
@@ -541,7 +581,11 @@ export function App() {
                       <Trash2 size={16} />
                     </button>
                   )}
-                  <small>{role?.defaultPreference}</small>
+                  <small>
+                    {contact.deliveryType === 'dingtalk_robot' ? '钉钉 Markdown 发送' : '通用 Webhook 发送'}
+                    {' · '}
+                    {role?.defaultPreference}
+                  </small>
                 </div>
               );
             })}
@@ -563,12 +607,39 @@ export function App() {
                 <option key={role.key} value={role.key}>{role.label}</option>
               ))}
             </select>
+            <select
+              aria-label="新增收件人发送通道"
+              value={contactDraft.deliveryType}
+              onChange={(event) =>
+                setContactDraft({ ...contactDraft, deliveryType: event.target.value as Contact['deliveryType'] })
+              }
+            >
+              <option value="generic_webhook">Webhook</option>
+              <option value="dingtalk_robot">钉钉机器人</option>
+            </select>
             <input
               aria-label="新增收件人 Webhook URL"
               value={contactDraft.webhookUrl}
-              placeholder="Webhook URL"
+              placeholder={contactDraft.deliveryType === 'dingtalk_robot' ? '钉钉机器人 Webhook URL' : 'Webhook URL'}
               onChange={(event) => setContactDraft({ ...contactDraft, webhookUrl: event.target.value })}
             />
+            {contactDraft.deliveryType === 'dingtalk_robot' && (
+              <>
+                <input
+                  aria-label="新增收件人钉钉加签 Secret"
+                  type="password"
+                  value={contactDraft.dingtalkSecret ?? ''}
+                  placeholder="可选：加签 Secret"
+                  onChange={(event) => setContactDraft({ ...contactDraft, dingtalkSecret: event.target.value })}
+                />
+                <input
+                  aria-label="新增收件人钉钉安全关键词"
+                  value={contactDraft.dingtalkKeyword}
+                  placeholder="可选：安全关键词"
+                  onChange={(event) => setContactDraft({ ...contactDraft, dingtalkKeyword: event.target.value })}
+                />
+              </>
+            )}
             <button onClick={saveContact} disabled={busy === 'contact'}>
               <Plus size={17} />
               添加

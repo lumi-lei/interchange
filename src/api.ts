@@ -10,9 +10,17 @@ export type Contact = {
   id: number;
   name: string;
   roleKey: string;
+  deliveryType: 'generic_webhook' | 'dingtalk_robot';
   webhookUrl: string;
+  dingtalkKeyword: string;
+  dingtalkSecretConfigured: boolean;
   preference: string;
   active: boolean;
+};
+
+export type ContactInput = Omit<Contact, 'id' | 'dingtalkSecretConfigured'> & {
+  dingtalkSecret?: string;
+  clearDingtalkSecret?: boolean;
 };
 
 export type Draft = {
@@ -50,13 +58,13 @@ export const api = {
       body: JSON.stringify({ customPreference }),
     }),
   contacts: () => request<Contact[]>('/api/contacts'),
-  createContact: (contact: Omit<Contact, 'id'>) =>
+  createContact: (contact: ContactInput) =>
     request<Contact>('/api/contacts', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(contact),
     }),
-  updateContact: (id: number, contact: Partial<Contact>) =>
+  updateContact: (id: number, contact: Partial<ContactInput>) =>
     request<Contact>(`/api/contacts/${id}`, {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },

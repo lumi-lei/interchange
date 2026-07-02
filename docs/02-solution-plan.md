@@ -9,7 +9,7 @@ Interchange is a local-first full-stack web app:
 - Storage: local SQLite through `better-sqlite3`
 - AI: DeepSeek OpenAI-compatible Chat Completions API
 - Upload parsing: Multer memory storage plus format-specific parsers
-- Notification: generic webhook POST
+- Notification: contact-level delivery channels, including generic webhook POST and DingTalk group robot webhook
 
 The browser never receives `DEEPSEEK_API_KEY`. All AI calls are made by the Express server.
 
@@ -21,7 +21,7 @@ The browser never receives `DEEPSEEK_API_KEY`. All AI calls are made by the Expr
 4. Select recipients.
 5. Generate role-specific message drafts through DeepSeek.
 6. Review and edit each draft.
-7. Confirm and send selected drafts through generic webhooks.
+7. Confirm and send selected drafts through the selected contact delivery channel.
 8. Review send records and retry failures if needed.
 
 ## API Design
@@ -35,16 +35,24 @@ The browser never receives `DEEPSEEK_API_KEY`. All AI calls are made by the Expr
 - `DELETE /api/contacts/:id`: delete a recipient.
 - `POST /api/inputs/parse`: parse text or uploaded files into normalized text.
 - `POST /api/generate`: generate role-specific drafts for selected recipients.
-- `POST /api/send`: send confirmed drafts through webhooks.
+- `POST /api/send`: send confirmed drafts through each contact's configured delivery channel.
 - `GET /api/records`: list recent generation and send records.
 
 ## Data Model
 
 - `roles`: built-in role key, label, default preference, custom preference.
-- `contacts`: name, role key, webhook URL, custom preference, active flag.
+- `contacts`: name, role key, delivery type, webhook URL, optional DingTalk robot secret and safety keyword, custom preference, active flag.
 - `input_records`: source type, original filename, normalized text, created time.
 - `generation_records`: input record, contact, role key, draft content, status.
-- `send_records`: generation record, webhook URL, payload, response status, error, created time.
+- `send_records`: generation record, delivery type, webhook URL, payload, response status, error, created time.
+
+## Notification Delivery
+
+- `generic_webhook`: sends the existing Interchange JSON payload to the contact webhook URL.
+- `dingtalk_robot`: sends a DingTalk Markdown robot message with `msgtype: "markdown"`, title `Interchange - {contact.name}`, and the user-confirmed draft as `markdown.text`.
+- DingTalk robot signing is optional per contact. When a secret is configured, the server appends `timestamp` and `sign` query parameters, where `sign` is HmacSHA256 over `timestamp + "\n" + secret`, Base64 encoded.
+- DingTalk safety keywords are optional per contact. If configured and absent from the confirmed draft, the server prefixes the keyword before sending to avoid DingTalk keyword-security rejection.
+- DingTalk secrets are stored server-side only. Contact APIs return `dingtalkSecretConfigured: boolean` and never return the secret value.
 
 ## AI Prompting
 

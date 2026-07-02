@@ -554,7 +554,17 @@ h2 {
 
 .contact-row {
   display: grid;
-  grid-template-columns: 24px minmax(96px, 1fr) minmax(110px, 0.78fr) minmax(130px, 1.18fr) 34px 34px;
+  grid-template-columns:
+    24px
+    minmax(96px, 1fr)
+    minmax(110px, 0.78fr)
+    minmax(118px, 0.82fr)
+    minmax(150px, 1.18fr)
+    minmax(128px, 0.9fr)
+    minmax(128px, 0.9fr)
+    34px
+    34px
+    34px;
   gap: 8px;
   align-items: center;
   border: 1px solid var(--line);
@@ -598,7 +608,7 @@ input[type='checkbox']:disabled {
 
 .new-contact {
   display: grid;
-  grid-template-columns: 1fr 0.78fr 1.18fr auto;
+  grid-template-columns: 1fr 0.78fr 0.82fr 1.18fr 0.9fr 0.9fr auto;
   margin-top: 12px;
 }
 

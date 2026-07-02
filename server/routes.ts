@@ -2,7 +2,8 @@ import express from 'express';
 import multer from 'multer';
 import { z } from 'zod';
 import { config } from './config.js';
-import { repo } from './db.js';
+import { repo, toPublicContact } from './db.js';
+import { buildDeliveryRequest } from './delivery.js';
 import { generateDraft } from './ai/modelRouter.js';
 import { assertExternalFileModelAllowed, externalModelKindForSource } from './ai/compliance.js';
 import { parseUploadedFile } from './parser.js';
@@ -15,11 +16,16 @@ const upload = multer({
 });
 
 const roleKeySchema = z.string().refine(isRoleKey, 'Invalid role key');
+const deliveryTypeSchema = z.enum(['generic_webhook', 'dingtalk_robot']);
 
 const contactSchema = z.object({
   name: z.string().min(1),
   roleKey: roleKeySchema,
+  deliveryType: deliveryTypeSchema.default('generic_webhook'),
   webhookUrl: z.string().default(''),
+  dingtalkSecret: z.string().optional(),
+  dingtalkKeyword: z.string().default(''),
+  clearDingtalkSecret: z.boolean().optional(),
   preference: z.string().default(''),
   active: z.boolean().optional(),
 });
@@ -43,12 +49,13 @@ router.put('/roles/:key', (req, res) => {
 });
 
 router.get('/contacts', (_req, res) => {
-  res.json(repo.contacts());
+  res.json(repo.contacts().map(toPublicContact));
 });
 
 router.post('/contacts', (req, res) => {
   const body = contactSchema.parse(req.body);
-  res.status(201).json(repo.createContact(body as any));
+  const created = repo.createContact(body as any);
+  res.status(201).json(created ? toPublicContact(created) : null);
 });
 
 router.put('/contacts/:id', (req, res) => {
@@ -56,7 +63,7 @@ router.put('/contacts/:id', (req, res) => {
   const body = contactSchema.partial().parse(req.body);
   const updated = repo.updateContact(id, body as any);
   if (!updated) return res.status(404).json({ error: 'Contact not found' });
-  res.json(updated);
+  res.json(toPublicContact(updated));
 });
 
 router.delete('/contacts/:id', (req, res) => {
@@ -106,7 +113,7 @@ router.post('/generate', async (req, res) => {
       contact.roleKey,
       content,
     );
-    drafts.push({ generationRecordId, contact, role, content });
+    drafts.push({ generationRecordId, contact: toPublicContact(contact), role, content });
   }
 
   res.json({ drafts });
@@ -133,6 +140,7 @@ router.post('/send', async (req, res) => {
       const sendRecordId = repo.createSendRecord({
         generationRecordId: message.generationRecordId ?? null,
         contactId: contact.id,
+        deliveryType: contact.deliveryType,
         webhookUrl: '',
         payload: { content: message.content },
         error,
@@ -141,26 +149,20 @@ router.post('/send', async (req, res) => {
       continue;
     }
 
-    const payload = {
-      source: 'interchange',
-      recipient: contact.name,
-      role: contact.roleKey,
-      content: message.content,
-      sentAt: new Date().toISOString(),
-    };
-
     try {
-      const response = await fetch(contact.webhookUrl, {
+      const delivery = buildDeliveryRequest({ contact, content: message.content });
+      const response = await fetch(delivery.webhookUrl, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(delivery.payload),
       });
       const responseBody = await response.text();
       const sendRecordId = repo.createSendRecord({
         generationRecordId: message.generationRecordId ?? null,
         contactId: contact.id,
+        deliveryType: delivery.deliveryType,
         webhookUrl: contact.webhookUrl,
-        payload,
+        payload: delivery.payload,
         responseStatus: response.status,
         responseBody: responseBody.slice(0, 2000),
         error: response.ok ? '' : `HTTP ${response.status}`,
@@ -171,8 +173,9 @@ router.post('/send', async (req, res) => {
       const sendRecordId = repo.createSendRecord({
         generationRecordId: message.generationRecordId ?? null,
         contactId: contact.id,
+        deliveryType: contact.deliveryType,
         webhookUrl: contact.webhookUrl,
-        payload,
+        payload: { content: message.content },
         error: messageText,
       });
       results.push({ contactId: contact.id, sendRecordId, ok: false, error: messageText });

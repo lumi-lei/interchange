@@ -11,6 +11,7 @@ import {
   isFileProviderEnabled,
   isVisionProviderEnabled,
 } from '../server/ai/compliance.js';
+import { buildDingTalkSign } from '../server/delivery.js';
 import { buildDraftMessages } from '../server/ai/prompts.js';
 import { deepSeekProvider } from '../server/ai/providers/deepseek.js';
 import { generateDraft as routeDraft, resolveTextProvider } from '../server/ai/modelRouter.js';
@@ -22,7 +23,10 @@ const sampleDraftRequest: DraftRequest = {
     id: 1,
     name: 'AI',
     roleKey: 'my_ai_coding_tool',
+    deliveryType: 'generic_webhook',
     webhookUrl: '',
+    dingtalkSecret: '',
+    dingtalkKeyword: '',
     preference: '',
     active: true,
     createdAt: '',
@@ -69,6 +73,37 @@ describe('Interchange API', () => {
       .expect(200);
 
     expect(updated.body.preference).toContain('风险');
+  });
+
+  it('does not expose DingTalk robot secrets through contact APIs', async () => {
+    const app = createApp();
+    const created = await request(app)
+      .post('/api/contacts')
+      .send({
+        name: 'DingTalk',
+        roleKey: 'product',
+        deliveryType: 'dingtalk_robot',
+        webhookUrl: 'https://oapi.dingtalk.com/robot/send?access_token=test',
+        dingtalkSecret: 'ding-secret',
+        dingtalkKeyword: 'Interchange',
+        preference: '',
+        active: true,
+      })
+      .expect(201);
+
+    expect(created.body.dingtalkSecretConfigured).toBe(true);
+    expect(created.body).not.toHaveProperty('dingtalkSecret');
+
+    const contacts = await request(app).get('/api/contacts').expect(200);
+    const matched = contacts.body.find((contact: any) => contact.id === created.body.id);
+    expect(matched.dingtalkSecretConfigured).toBe(true);
+    expect(matched).not.toHaveProperty('dingtalkSecret');
+
+    const cleared = await request(app)
+      .put(`/api/contacts/${created.body.id}`)
+      .send({ clearDingtalkSecret: true })
+      .expect(200);
+    expect(cleared.body.dingtalkSecretConfigured).toBe(false);
   });
 
   it('toggles contact active state through the existing update endpoint', async () => {
@@ -318,6 +353,66 @@ describe('Interchange API', () => {
 
       expect(response.body.results[0].ok).toBe(true);
       expect(received.content).toBe('确认发送内容');
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  it('sends confirmed messages to a DingTalk robot as signed markdown', async () => {
+    let received: any = null;
+    let receivedUrl = '';
+    const receiver = express();
+    receiver.use(express.json());
+    receiver.post('/hook', (req, res) => {
+      received = req.body;
+      receivedUrl = req.url;
+      res.status(200).json({ errcode: 0, errmsg: 'ok' });
+    });
+
+    const server = await new Promise<Server>((resolve) => {
+      const instance = createServer(receiver);
+      instance.listen(0, '127.0.0.1', () => resolve(instance));
+    });
+
+    try {
+      const address = server.address();
+      if (!address || typeof address === 'string') throw new Error('No test server address');
+      const webhookUrl = `http://127.0.0.1:${address.port}/hook?access_token=test-token`;
+      const secret = 'this is a secret';
+      const app = createApp();
+      const contact = await request(app)
+        .post('/api/contacts')
+        .send({
+          name: 'Ding',
+          roleKey: 'product',
+          deliveryType: 'dingtalk_robot',
+          webhookUrl,
+          dingtalkSecret: secret,
+          dingtalkKeyword: 'Interchange',
+          preference: '',
+          active: true,
+        })
+        .expect(201);
+
+      const response = await request(app)
+        .post('/api/send')
+        .send({ messages: [{ generationRecordId: null, contactId: contact.body.id, content: '确认发送内容' }] })
+        .expect(200);
+
+      expect(response.body.results[0].ok).toBe(true);
+      expect(received.msgtype).toBe('markdown');
+      expect(received.markdown.title).toBe('Interchange - Ding');
+      expect(received.markdown.text).toContain('Interchange');
+      expect(received.markdown.text).toContain('确认发送内容');
+
+      const url = new URL(`http://127.0.0.1${receivedUrl}`);
+      const timestamp = Number(url.searchParams.get('timestamp'));
+      expect(timestamp).toBeGreaterThan(0);
+      expect(url.searchParams.get('sign')).toBe(buildDingTalkSign(secret, timestamp));
+
+      const records = await request(app).get('/api/records').expect(200);
+      expect(records.body.sends[0].delivery_type).toBe('dingtalk_robot');
+      expect(records.body.sends[0].payload).not.toContain(secret);
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }

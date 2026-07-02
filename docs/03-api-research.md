@@ -82,6 +82,17 @@ This project follows the repository instruction to use `ctx7` for current librar
 - `readSheet(buffer)` returns a two-dimensional row/cell array for `.xlsx`.
 - This app converts the first worksheet to comma-separated text. CSV is decoded directly. Legacy `.xls` returns a clear unsupported-file error.
 
+## DingTalk Robot Webhook
+
+- Selected ID: `/websites/open_dingtalk_document`
+- Key result: custom robot webhooks support Markdown messages with `msgtype: "markdown"`.
+- Markdown payload shape:
+  - `markdown.title`: message title.
+  - `markdown.text`: Markdown body; @ targets must also appear in the text when @ support is used later.
+- Secret signing uses HmacSHA256 and Base64. The string to sign is `timestamp + "\n" + secret`.
+- Signed robot webhook requests append `timestamp` and `sign` query parameters to the webhook URL.
+- This app implements DingTalk group robot Markdown delivery only. It does not implement enterprise app private messages or @ mentions in this version.
+
 ## concurrently
 
 - Selected ID: `/open-cli-tools/concurrently`
