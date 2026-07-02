@@ -187,6 +187,7 @@ describe('parser MarkItDown fallback', () => {
       sourceType: 'excel',
       filename: 'legacy.xls',
       text: '| Name | Value |\n| --- | --- |\n| alpha | 1 |',
+      markdownFilename: 'legacy.md',
     });
     expect(mocks.readSheet).not.toHaveBeenCalled();
   });
@@ -205,6 +206,7 @@ describe('parser MarkItDown fallback', () => {
       sourceType: 'markdown',
       filename: 'deck.pptx',
       text: '# Deck\n\nA slide',
+      markdownFilename: 'deck.md',
     });
   });
 
@@ -222,6 +224,7 @@ describe('parser MarkItDown fallback', () => {
       sourceType: 'markdown',
       filename: 'page.html',
       text: 'Page heading',
+      markdownFilename: 'page.md',
     });
   });
 

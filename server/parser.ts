@@ -9,6 +9,7 @@ export type ParsedInput = {
   sourceType: string;
   filename: string;
   text: string;
+  markdownFilename?: string;
 };
 
 const imageExts = new Set(['.png', '.jpg', '.jpeg', '.webp', '.bmp', '.gif']);
@@ -39,6 +40,12 @@ function unsupportedFileType(file: Express.Multer.File, ext: string) {
   const error = new Error(`Unsupported file type: ${ext || file.mimetype}`);
   Object.assign(error, { status: 415 });
   return error;
+}
+
+function markdownFilenameFor(filename: string) {
+  const parsed = path.parse(filename);
+  const baseName = parsed.name || parsed.base || 'converted';
+  return `${baseName}.md`;
 }
 
 export async function parseWithBuiltInParser(file: Express.Multer.File): Promise<ParsedInput> {
@@ -107,7 +114,14 @@ export async function parseUploadedFile(file: Express.Multer.File): Promise<Pars
     let markitdownFailureMessage = '';
     if (result.ok) {
       const text = result.text.trim();
-      if (text) return { sourceType: markitdownSourceType, filename, text };
+      if (text) {
+        return {
+          sourceType: markitdownSourceType,
+          filename,
+          text,
+          markdownFilename: markdownFilenameFor(filename),
+        };
+      }
       markitdownFailureMessage = 'MarkItDown returned empty output.';
     } else {
       markitdownFailureMessage = result.message;

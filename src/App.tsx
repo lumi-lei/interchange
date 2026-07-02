@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type MouseEvent, type ReactNode } from 'r
 import {
   Bell,
   Check,
+  Download,
   FileText,
   Loader2,
   Plus,
@@ -59,6 +60,7 @@ export function App() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [selectedContactIds, setSelectedContactIds] = useState<number[]>([]);
   const [sourceText, setSourceText] = useState('');
+  const [markdownDownload, setMarkdownDownload] = useState<{ filename: string; text: string } | null>(null);
   const [inputRecordId, setInputRecordId] = useState<number | null>(null);
   const [drafts, setDrafts] = useState<DraftState[]>([]);
   const [contactDraft, setContactDraft] = useState<Omit<Contact, 'id'>>(blankContact());
@@ -111,6 +113,7 @@ export function App() {
       else form.append('text', sourceText);
       const parsed = await api.parseInput(form);
       setSourceText(parsed.text);
+      setMarkdownDownload(parsed.markdownFilename ? { filename: parsed.markdownFilename, text: parsed.text } : null);
       setInputRecordId(parsed.inputRecordId);
       setStatus(`已解析 ${parsed.filename || '手动输入'}，来源类型：${parsed.sourceType}`);
     } catch (err) {
@@ -118,6 +121,20 @@ export function App() {
     } finally {
       setBusy('');
     }
+  }
+
+  function downloadConvertedMarkdown() {
+    if (!markdownDownload) return;
+
+    const blob = new Blob([markdownDownload.text], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = markdownDownload.filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
   }
 
   async function generate() {
@@ -337,6 +354,7 @@ export function App() {
             value={sourceText}
             onChange={(event) => {
               setSourceText(event.target.value);
+              setMarkdownDownload(null);
               setInputRecordId(null);
             }}
             placeholder="粘贴项目变更、会议记录、缺陷说明、发布备注，或上传 Word / PDF / Excel / 截图..."
@@ -359,6 +377,12 @@ export function App() {
               {busy === 'parse' ? <Loader2 className="spin" size={17} /> : <Check size={17} />}
               标准化文本
             </button>
+            {markdownDownload && (
+              <button onClick={downloadConvertedMarkdown} title="下载已转换的 Markdown 文件">
+                <Download size={17} />
+                <span>下载 Markdown</span>
+              </button>
+            )}
           </div>
         </AceternityCard>
 

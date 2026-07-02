@@ -22,6 +22,14 @@ export type Draft = {
   content: string;
 };
 
+export type ParsedInput = {
+  inputRecordId: number;
+  sourceType: string;
+  filename: string;
+  text: string;
+  markdownFilename?: string;
+};
+
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const response = await fetch(url, options);
   const text = await response.text();
@@ -56,7 +64,7 @@ export const api = {
     }),
   deleteContact: (id: number) => request<void>(`/api/contacts/${id}`, { method: 'DELETE' }),
   parseInput: (formData: FormData) =>
-    request<{ inputRecordId: number; sourceType: string; filename: string; text: string }>('/api/inputs/parse', {
+    request<ParsedInput>('/api/inputs/parse', {
       method: 'POST',
       body: formData,
     }),
