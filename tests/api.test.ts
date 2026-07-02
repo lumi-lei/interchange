@@ -168,8 +168,14 @@ describe('Interchange API', () => {
     const teammateAiRole = response.body.find((role: any) => role.key === 'teammate_ai_coding_tool');
 
     expect(myAiRole.templatePreference).toContain('主执行 AI');
+    expect(myAiRole.templatePreference).toContain('Agent Skills');
+    expect(myAiRole.templatePreference).toContain('OpenSpec');
+    expect(myAiRole.templatePreference).toContain('未完成文档发现前，不要修改代码');
     expect(myAiRole.templatePreference).not.toBe(myAiRole.customPreference);
     expect(teammateAiRole.templatePreference).toContain('同项目协作 AI');
+    expect(teammateAiRole.templatePreference).toContain('Agent Skills');
+    expect(teammateAiRole.templatePreference).toContain('OpenSpec');
+    expect(teammateAiRole.templatePreference).toContain('协作边界');
     expect(teammateAiRole.templatePreference).not.toBe(teammateAiRole.customPreference);
   });
 
