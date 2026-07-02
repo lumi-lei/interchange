@@ -1,0 +1,4 @@
+interface:
+  display_name: "Interchange"
+  short_description: "Draft role-specific project handoffs"
+  default_prompt: "Use $interchange to transform objective project facts into role-specific drafts, AI coding context, OpenSpec-like artifacts, or confirmed delivery workflows."
