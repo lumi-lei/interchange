@@ -321,7 +321,7 @@ export function App() {
               <span>上传文件</span>
               <input
                 type="file"
-                accept=".txt,.md,.markdown,.docx,.pdf,.xlsx,.xls,.xlsm,.csv,.png,.jpg,.jpeg,.webp,.bmp,.gif"
+                accept=".txt,.md,.markdown,.json,.log,.docx,.pdf,.xlsx,.xls,.xlsm,.csv,.html,.htm,.pptx,.png,.jpg,.jpeg,.webp,.bmp,.gif"
                 onChange={(event) => {
                   const file = event.target.files?.[0];
                   if (file) parseTextOrFile(file);
