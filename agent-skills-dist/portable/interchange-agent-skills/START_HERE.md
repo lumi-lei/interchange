@@ -11,9 +11,37 @@ Use this folder to turn objective project facts into role-specific messages, AI 
    - OpenCode: read `adapters/opencode/instructions.md`.
    - Any other tool: paste `adapters/generic/start-prompt.md`.
 2. Provide objective facts, such as requirements, meeting notes, code paths, test output, or issue text.
-3. Ask the AI tool to draft for the target roles.
-4. Review and edit the drafts.
-5. Send only after explicit confirmation.
+3. For project changes, start with `interchange-flow` to run the OpenSpec-like loop: explore -> propose -> context -> apply -> archive.
+4. For message drafting, ask the AI tool to draft for the target roles.
+5. Review and edit the drafts.
+6. Send only after explicit confirmation.
+
+## OpenSpec-like Project Changes
+
+Use `interchange-flow` when you want "先共识、再实现、最后沉淀":
+
+```text
+Use interchange-flow.
+change-id: add-refund-status-check
+domain: payments
+goal: 增加退款状态校验，避免重复退款。
+
+Create the change package first and pause for confirmation before modifying product code.
+```
+
+The flow creates or updates:
+
+```text
+interchange/changes/<change-id>/
+  change.yaml
+  proposal.md
+  context.md
+  design.md
+  tasks.md
+  delta-spec.md
+  implementation-notes.md
+  review.md
+```
 
 ## Default Mode
 

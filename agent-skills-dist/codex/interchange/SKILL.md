@@ -1,6 +1,6 @@
 ---
 name: interchange
-description: Transform objective project facts into role-specific Chinese drafts, AI coding tool context, OpenSpec-like change artifacts, and confirmed delivery payloads. Use when a user wants Interchange-style communication for product, QA, tech leads, department leaders, customers, the user's AI coding tool, or a teammate's AI coding tool; use Connected Mode only when the user explicitly asks to reuse a running local Interchange server.
+description: Transform objective project facts into role-specific Chinese drafts, AI coding tool context, OpenSpec-like project change workflows, and confirmed delivery payloads. Use when a user wants Interchange-style communication, AI coding context, the "agree before implementation, then archive" workflow, proposal/context/design/tasks/delta-spec files, or teammate handoffs; use Connected Mode only when the user explicitly asks to reuse a running local Interchange server.
 ---
 
 # Interchange
@@ -10,6 +10,7 @@ Use this skill to turn objective project facts into clear handoffs for humans an
 ## Mode Selection
 
 - Use standalone drafting for ordinary message rewriting, AI coding context, OpenSpec-like change packages, and review-ready drafts.
+- Use the OpenSpec-like flow for project changes that need agreement before implementation and long-term spec archival.
 - Use Connected Mode only when the user explicitly asks to reuse a running Interchange web app or its saved contacts, roles, parsing, generation, records, or send API.
 - Use webhook sending only after the user confirms the exact final recipient, destination URL, and message content.
 
@@ -64,7 +65,7 @@ When preparing a prompt for an AI coding tool, focus on executable context:
 
 Distinguish whether the prompt is for the user's current AI coding tool or a teammate's AI coding tool. For a teammate, include more repository orientation and avoid relying on unstated local context.
 
-## OpenSpec-Like Artifacts
+## OpenSpec-Like Flow
 
 For project change planning, read `references/openspec-like.md`. Create only the artifacts requested by the user. If unspecified, produce a compact package with:
 
@@ -76,6 +77,34 @@ For project change planning, read `references/openspec-like.md`. Create only the
 - archive notes when the implementation is complete and verified
 
 Keep artifacts factual, testable, and small enough for an AI coding tool to execute.
+
+For a new project change, follow this loop:
+
+```text
+explore -> propose -> context -> apply -> archive
+```
+
+Before modifying product code, create or update:
+
+```text
+interchange/changes/<change-id>/
+  change.yaml
+  proposal.md
+  context.md
+  design.md
+  tasks.md
+  delta-spec.md
+  implementation-notes.md
+  review.md
+```
+
+Prefer the bundled scaffold script:
+
+```bash
+node scripts/create_change_package.mjs --id <change-id> --domain <domain> --goal "<goal>"
+```
+
+Do not enter the apply phase until the user explicitly confirms the proposal, design, tasks, and delta spec. Archive only after implementation and verification, then merge the confirmed delta into `interchange/specs/<domain>/`.
 
 ## Connected Mode
 

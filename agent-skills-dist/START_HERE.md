@@ -19,6 +19,14 @@ This folder contains two ways to use Interchange from other AI coding tools.
 
 Use standalone mode by default. It requires no Interchange server, database, model API key, or webhook URL. The target AI coding tool uses its own model to draft role-specific Chinese messages, AI coding context, and OpenSpec-like artifacts.
 
+For project changes, use the OpenSpec-like flow:
+
+```text
+explore -> propose -> context -> apply -> archive
+```
+
+Codex users can invoke `$interchange` and ask for a change package. Portable users should start from `portable/interchange-agent-skills/START_HERE.md` or the target adapter. The flow creates proposal/context/design/tasks/delta-spec artifacts first and pauses for confirmation before implementation.
+
 Use Connected Mode only when a running Interchange server is explicitly requested. For cross-device use, pass a reachable base URL such as:
 
 ```bash

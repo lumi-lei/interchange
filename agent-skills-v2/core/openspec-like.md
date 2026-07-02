@@ -2,6 +2,8 @@
 
 Use this workflow to prepare reviewable project change artifacts before implementation.
 
+For an end-to-end workflow with confirmation gates and repository files, use the `interchange-flow` skill. This reference defines the artifact shape shared by `interchange-flow` and `interchange-openspec-workflow`.
+
 ## Change Package
 
 ```text
@@ -63,3 +65,11 @@ Separate changes into:
 ## archive
 
 Only archive after implementation and verification. Merge confirmed delta-spec changes into long-term specs, then move the change package to archive.
+
+## Confirmation Gate
+
+Before implementation, the user must confirm the generated proposal, design, tasks, and delta spec. If confirmation is missing, stop after the change package and ask for approval.
+
+## Long-Term Specs
+
+Use long-term specs for current, trusted project behavior. Use change packages for proposed or in-progress behavior. Do not treat raw imported Markdown as a long-term spec until it has been reviewed.
