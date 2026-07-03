@@ -5,6 +5,7 @@ import { createServer, type Server } from 'node:http';
 import { createApp } from '../server/index.js';
 import { db } from '../server/db.js';
 import { config } from '../server/config.js';
+import { resetRateLimitStores } from '../server/rateLimit.js';
 import {
   assertExternalFileModelAllowed,
   disabledExternalModelMessages,
@@ -44,6 +45,7 @@ const sampleDraftRequest: DraftRequest = {
 
 describe('Interchange API', () => {
   afterEach(() => {
+    resetRateLimitStores();
     vi.restoreAllMocks();
     vi.doUnmock('../server/ai/modelRouter.js');
     vi.doUnmock('../server/deepseek.js');
@@ -57,6 +59,18 @@ describe('Interchange API', () => {
     const response = await request(createApp()).get('/api/health').expect(200);
     expect(response.body.ok).toBe(true);
     expect(response.body).not.toHaveProperty('deepseekApiKey');
+  });
+
+  it('serves JSON health responses from the Vercel API function entrypoint', async () => {
+    const { default: vercelApiApp } = await import('../api/[...path].js');
+
+    const apiPathResponse = await request(vercelApiApp).get('/api/health').expect(200);
+    const strippedPathResponse = await request(vercelApiApp).get('/health').expect(200);
+
+    expect(apiPathResponse.type).toContain('json');
+    expect(strippedPathResponse.type).toContain('json');
+    expect(apiPathResponse.body.ok).toBe(true);
+    expect(strippedPathResponse.body.ok).toBe(true);
   });
 
   it('creates and updates contacts', async () => {
@@ -355,6 +369,42 @@ describe('Interchange API', () => {
       expect(received.content).toBe('确认发送内容');
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  it('rate limits generation requests before calling the model provider', async () => {
+    const originalApiKey = config.deepseekApiKey;
+    const originalAiLimit = config.aiRateLimitMax;
+    const originalWindowMs = config.rateLimitWindowMs;
+    try {
+      config.deepseekApiKey = 'test-key';
+      config.aiRateLimitMax = 1;
+      config.rateLimitWindowMs = 60000;
+      const app = createApp();
+      const contact = await request(app)
+        .post('/api/contacts')
+        .send({ name: 'Limited AI', roleKey: 'my_ai_coding_tool', webhookUrl: '', preference: '', active: true })
+        .expect(201);
+
+      vi.spyOn(deepSeekProvider, 'generateDraft').mockResolvedValue({ content: 'first draft' });
+
+      await request(app)
+        .post('/api/generate')
+        .send({ sourceText: 'first', inputRecordId: null, contactIds: [contact.body.id] })
+        .expect(200);
+
+      const limited = await request(app)
+        .post('/api/generate')
+        .send({ sourceText: 'second', inputRecordId: null, contactIds: [contact.body.id] })
+        .expect(429);
+
+      expect(limited.body.error).toContain('Too many generation requests');
+      expect(limited.headers['retry-after']).toBeDefined();
+      expect(deepSeekProvider.generateDraft).toHaveBeenCalledTimes(1);
+    } finally {
+      config.deepseekApiKey = originalApiKey;
+      config.aiRateLimitMax = originalAiLimit;
+      config.rateLimitWindowMs = originalWindowMs;
     }
   });
 

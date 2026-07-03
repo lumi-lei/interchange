@@ -1,7 +1,11 @@
 import 'dotenv/config';
+import os from 'node:os';
 import path from 'node:path';
 
 const root = process.cwd();
+const defaultSqlitePath = process.env.VERCEL
+  ? path.join(os.tmpdir(), 'interchange.sqlite')
+  : path.resolve(root, './data/interchange.sqlite');
 
 export const DISABLED_EXTERNAL_MODEL_PROVIDER = 'none' as const;
 export type TextModelProviderName = 'deepseek' | (string & {});
@@ -14,7 +18,7 @@ function providerEnv(value: string | undefined, fallback: string) {
 
 export const config = {
   port: Number(process.env.PORT ?? 4120),
-  sqlitePath: path.resolve(root, process.env.SQLITE_PATH ?? './data/interchange.sqlite'),
+  sqlitePath: process.env.SQLITE_PATH ? path.resolve(root, process.env.SQLITE_PATH) : defaultSqlitePath,
   deepseekApiKey: process.env.DEEPSEEK_API_KEY ?? '',
   deepseekModel: process.env.DEEPSEEK_MODEL ?? 'deepseek-v4-flash',
   textModelProvider: (process.env.TEXT_MODEL_PROVIDER ?? 'deepseek') as TextModelProviderName,
@@ -24,6 +28,9 @@ export const config = {
   uploadLimitMb: Number(process.env.UPLOAD_LIMIT_MB ?? 25),
   markitdownCommand: process.env.MARKITDOWN_COMMAND ?? 'markitdown',
   markitdownTimeoutMs: Number(process.env.MARKITDOWN_TIMEOUT_MS ?? 15000),
+  rateLimitWindowMs: Number(process.env.RATE_LIMIT_WINDOW_MS ?? 300000),
+  apiRateLimitMax: Number(process.env.API_RATE_LIMIT_MAX ?? 100),
+  aiRateLimitMax: Number(process.env.AI_RATE_LIMIT_MAX ?? 3),
 };
 
 export function requireDeepSeekKey() {

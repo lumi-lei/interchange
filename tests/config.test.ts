@@ -10,6 +10,9 @@ const CONFIG_ENV_KEYS = [
   'PORT',
   'SQLITE_PATH',
   'UPLOAD_LIMIT_MB',
+  'RATE_LIMIT_WINDOW_MS',
+  'API_RATE_LIMIT_MAX',
+  'AI_RATE_LIMIT_MAX',
   'MARKITDOWN_COMMAND',
   'MARKITDOWN_TIMEOUT_MS',
   'DOTENV_CONFIG_PATH',
@@ -54,6 +57,9 @@ describe('server config', () => {
     expect(config.uploadLimitMb).toBe(25);
     expect(config.markitdownCommand).toBe('markitdown');
     expect(config.markitdownTimeoutMs).toBe(15000);
+    expect(config.rateLimitWindowMs).toBe(300000);
+    expect(config.apiRateLimitMax).toBe(100);
+    expect(config.aiRateLimitMax).toBe(3);
   });
 
   it('treats disabled external providers as unavailable with readable messages', async () => {

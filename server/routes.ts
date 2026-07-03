@@ -7,6 +7,7 @@ import { buildDeliveryRequest } from './delivery.js';
 import { generateDraft } from './ai/modelRouter.js';
 import { assertExternalFileModelAllowed, externalModelKindForSource } from './ai/compliance.js';
 import { parseUploadedFile } from './parser.js';
+import { aiRateLimit } from './rateLimit.js';
 import { isRoleKey, type RoleKey } from './roles.js';
 
 const router = express.Router();
@@ -91,7 +92,7 @@ router.post('/inputs/parse', upload.single('file'), async (req, res) => {
   res.json({ inputRecordId, ...parsed });
 });
 
-router.post('/generate', async (req, res) => {
+router.post('/generate', aiRateLimit, async (req, res) => {
   const body = z.object({
     sourceText: z.string().min(1),
     inputRecordId: z.number().nullable().optional(),
