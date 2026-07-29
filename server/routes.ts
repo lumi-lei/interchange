@@ -14,6 +14,7 @@ const router = express.Router();
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: config.uploadLimitMb * 1024 * 1024, files: 1 },
+  defParamCharset: 'utf8',
 });
 
 const roleKeySchema = z.string().refine(isRoleKey, 'Invalid role key');

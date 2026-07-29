@@ -267,6 +267,16 @@ describe('Interchange API', () => {
     }
   });
 
+  it('preserves UTF-8 filenames uploaded through multipart form data', async () => {
+    const filename = '菜单功能迁移清单.md';
+    const response = await request(createApp())
+      .post('/api/inputs/parse')
+      .attach('file', Buffer.from('# 测试内容', 'utf8'), { filename, contentType: 'text/markdown' })
+      .expect(200);
+
+    expect(response.body.filename).toBe(filename);
+  });
+
   it('keeps the existing prompt preference order', () => {
     const messages = buildDraftMessages({
       ...sampleDraftRequest,
