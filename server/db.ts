@@ -1,6 +1,5 @@
-import fs from 'node:fs';
-import path from 'node:path';
-import Database from 'better-sqlite3';
+import { createClient, type InStatement, type Row } from '@libsql/client';
+import { pathToFileURL } from 'node:url';
 import { config } from './config.js';
 import { roleDefinitions, roleTemplatePreference, type RoleKey } from './roles.js';
 
@@ -49,24 +48,39 @@ export type RoleRow = {
   updatedAt: string;
 };
 
-fs.mkdirSync(path.dirname(config.sqlitePath), { recursive: true });
+const useTurso = process.env.NODE_ENV !== 'test' && Boolean(config.tursoDatabaseUrl && config.tursoAuthToken);
+const databaseUrl = useTurso ? config.tursoDatabaseUrl : process.env.NODE_ENV === 'test'
+  ? 'file::memory:'
+  : pathToFileURL(config.sqlitePath).href;
 
-export const db = new Database(config.sqlitePath);
-db.pragma('journal_mode = WAL');
+export const db = createClient({
+  url: databaseUrl,
+  ...(useTurso ? { authToken: config.tursoAuthToken } : {}),
+});
 
 function now() {
   return new Date().toISOString();
 }
 
-function ensureColumn(tableName: string, columnName: string, definition: string) {
-  const columns = db.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name: string }>;
-  if (!columns.some((column) => column.name === columnName)) {
-    db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
+function value<T>(row: Row, key: string) {
+  return row[key] as T;
+}
+
+function rowObject(row: Row, columns: string[]) {
+  return Object.fromEntries(columns.map((column) => [column, row[column]]));
+}
+
+async function ensureColumn(tableName: string, columnName: string, definition: string) {
+  const columns = await db.execute(`PRAGMA table_info(${tableName})`);
+  if (!columns.rows.some((column) => value<string>(column, 'name') === columnName)) {
+    await db.execute(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
   }
 }
 
-export function migrate() {
-  db.exec(`
+let migrationPromise: Promise<void> | undefined;
+
+async function runMigrations() {
+  await db.executeMultiple(`
     CREATE TABLE IF NOT EXISTS roles (
       key TEXT PRIMARY KEY,
       label TEXT NOT NULL,
@@ -121,59 +135,56 @@ export function migrate() {
     );
   `);
 
-  ensureColumn('contacts', 'delivery_type', "TEXT NOT NULL DEFAULT 'generic_webhook'");
-  ensureColumn('contacts', 'dingtalk_secret', "TEXT NOT NULL DEFAULT ''");
-  ensureColumn('contacts', 'dingtalk_keyword', "TEXT NOT NULL DEFAULT ''");
-  ensureColumn('send_records', 'delivery_type', "TEXT NOT NULL DEFAULT 'generic_webhook'");
+  await ensureColumn('contacts', 'delivery_type', "TEXT NOT NULL DEFAULT 'generic_webhook'");
+  await ensureColumn('contacts', 'dingtalk_secret', "TEXT NOT NULL DEFAULT ''");
+  await ensureColumn('contacts', 'dingtalk_keyword', "TEXT NOT NULL DEFAULT ''");
+  await ensureColumn('send_records', 'delivery_type', "TEXT NOT NULL DEFAULT 'generic_webhook'");
 
-  const insertRole = db.prepare(`
-    INSERT INTO roles (key, label, default_preference, custom_preference, updated_at)
-    VALUES (@key, @label, @defaultPreference, '', @updatedAt)
-    ON CONFLICT(key) DO UPDATE SET
-      label = excluded.label,
-      default_preference = excluded.default_preference
-  `);
+  await db.batch(roleDefinitions.map((role): InStatement => ({
+    sql: `
+      INSERT INTO roles (key, label, default_preference, custom_preference, updated_at)
+      VALUES (?, ?, ?, '', ?)
+      ON CONFLICT(key) DO UPDATE SET
+        label = excluded.label,
+        default_preference = excluded.default_preference
+    `,
+    args: [role.key, role.label, role.defaultPreference, now()],
+  })), 'write');
 
-  const seed = db.transaction(() => {
-    for (const role of roleDefinitions) {
-      insertRole.run({ ...role, updatedAt: now() });
-    }
-  });
-  seed();
-
-  const count = db.prepare('SELECT COUNT(*) AS count FROM contacts').get() as { count: number };
-  if (count.count === 0) {
-    const insertContact = db.prepare(`
-      INSERT INTO contacts (
-        name, role_key, delivery_type, webhook_url, dingtalk_secret, dingtalk_keyword,
-        preference, active, created_at, updated_at
-      )
-      VALUES (
-        @name, @roleKey, @deliveryType, @webhookUrl, @dingtalkSecret, @dingtalkKeyword,
-        @preference, 1, @createdAt, @updatedAt
-      )
-    `);
+  const countResult = await db.execute('SELECT COUNT(*) AS count FROM contacts');
+  if (Number(value<number | bigint>(countResult.rows[0]!, 'count')) === 0) {
     const createdAt = now();
     const defaults: ContactInput[] = [
       { name: '产品同学', roleKey: 'product', webhookUrl: '', preference: '' },
       { name: '测试同学', roleKey: 'qa', webhookUrl: '', preference: '' },
       { name: '研发组长', roleKey: 'tech_lead', webhookUrl: '', preference: '' },
     ];
-    db.transaction(() => {
-      for (const contact of defaults) {
-        insertContact.run({
-          ...contact,
-          deliveryType: contact.deliveryType ?? 'generic_webhook',
-          webhookUrl: contact.webhookUrl ?? '',
-          dingtalkSecret: contact.dingtalkSecret ?? '',
-          dingtalkKeyword: contact.dingtalkKeyword ?? '',
-          preference: contact.preference ?? '',
-          createdAt,
-          updatedAt: createdAt,
-        });
-      }
-    })();
+    await db.batch(defaults.map((contact): InStatement => ({
+      sql: `
+        INSERT INTO contacts (
+          name, role_key, delivery_type, webhook_url, dingtalk_secret, dingtalk_keyword,
+          preference, active, created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+      `,
+      args: [
+        contact.name,
+        contact.roleKey,
+        contact.deliveryType ?? 'generic_webhook',
+        contact.webhookUrl ?? '',
+        contact.dingtalkSecret ?? '',
+        contact.dingtalkKeyword ?? '',
+        contact.preference ?? '',
+        createdAt,
+        createdAt,
+      ],
+    })), 'write');
   }
+}
+
+export function migrate() {
+  migrationPromise ??= runMigrations();
+  return migrationPromise;
 }
 
 function mapContact(row: any): Contact {
@@ -212,98 +223,100 @@ function mapRole(row: any): RoleRow {
 }
 
 export const repo = {
-  roles() {
-    return (db.prepare('SELECT * FROM roles ORDER BY rowid').all() as any[]).map(mapRole);
+  async roles() {
+    const result = await db.execute('SELECT * FROM roles ORDER BY rowid');
+    return result.rows.map((row) => mapRole(rowObject(row, result.columns)));
   },
-  updateRole(key: RoleKey, customPreference: string) {
-    db.prepare('UPDATE roles SET custom_preference = ?, updated_at = ? WHERE key = ?').run(
-      customPreference,
-      now(),
-      key,
-    );
-    return mapRole(db.prepare('SELECT * FROM roles WHERE key = ?').get(key));
+  async updateRole(key: RoleKey, customPreference: string) {
+    await db.execute({
+      sql: 'UPDATE roles SET custom_preference = ?, updated_at = ? WHERE key = ?',
+      args: [customPreference, now(), key],
+    });
+    const result = await db.execute({ sql: 'SELECT * FROM roles WHERE key = ?', args: [key] });
+    return mapRole(rowObject(result.rows[0]!, result.columns));
   },
-  contacts() {
-    return (db.prepare('SELECT * FROM contacts ORDER BY active DESC, id ASC').all() as any[]).map(mapContact);
+  async contacts() {
+    const result = await db.execute('SELECT * FROM contacts ORDER BY active DESC, id ASC');
+    return result.rows.map((row) => mapContact(rowObject(row, result.columns)));
   },
-  contact(id: number) {
-    const row = db.prepare('SELECT * FROM contacts WHERE id = ?').get(id);
-    return row ? mapContact(row) : null;
+  async contact(id: number) {
+    const result = await db.execute({ sql: 'SELECT * FROM contacts WHERE id = ?', args: [id] });
+    return result.rows[0] ? mapContact(rowObject(result.rows[0], result.columns)) : null;
   },
-  createContact(input: ContactInput) {
+  async createContact(input: ContactInput) {
     const createdAt = now();
-    const result = db.prepare(`
+    const result = await db.execute({ sql: `
       INSERT INTO contacts (
         name, role_key, delivery_type, webhook_url, dingtalk_secret, dingtalk_keyword,
         preference, active, created_at, updated_at
       )
       VALUES (
-        @name, @roleKey, @deliveryType, @webhookUrl, @dingtalkSecret, @dingtalkKeyword,
-        @preference, @active, @createdAt, @updatedAt
-      )
-    `).run({
-      name: input.name,
-      roleKey: input.roleKey,
-      deliveryType: input.deliveryType ?? 'generic_webhook',
-      webhookUrl: input.webhookUrl ?? '',
-      dingtalkSecret: input.dingtalkSecret ?? '',
-      dingtalkKeyword: input.dingtalkKeyword ?? '',
-      preference: input.preference ?? '',
-      active: input.active === false ? 0 : 1,
+        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+      )`, args: [
+      input.name,
+      input.roleKey,
+      input.deliveryType ?? 'generic_webhook',
+      input.webhookUrl ?? '',
+      input.dingtalkSecret ?? '',
+      input.dingtalkKeyword ?? '',
+      input.preference ?? '',
+      input.active === false ? 0 : 1,
       createdAt,
-      updatedAt: createdAt,
-    });
+      createdAt,
+    ] });
     return repo.contact(Number(result.lastInsertRowid));
   },
-  updateContact(id: number, input: ContactUpdateInput) {
-    const existing = repo.contact(id);
+  async updateContact(id: number, input: ContactUpdateInput) {
+    const existing = await repo.contact(id);
     if (!existing) return null;
     const next = {
-      ...existing,
-      ...input,
-      dingtalkSecret: input.clearDingtalkSecret
-        ? ''
-        : input.dingtalkSecret === undefined
-          ? existing.dingtalkSecret
-          : input.dingtalkSecret,
+      name: input.name ?? existing.name,
+      roleKey: input.roleKey ?? existing.roleKey,
+      deliveryType: input.deliveryType ?? existing.deliveryType,
+      webhookUrl: input.webhookUrl ?? existing.webhookUrl,
+      dingtalkSecret: input.clearDingtalkSecret ? '' : input.dingtalkSecret ?? existing.dingtalkSecret,
+      dingtalkKeyword: input.dingtalkKeyword ?? existing.dingtalkKeyword,
+      preference: input.preference ?? existing.preference,
+      active: input.active ?? existing.active,
     };
-    db.prepare(`
+    await db.execute({ sql: `
       UPDATE contacts SET
-        name = @name,
-        role_key = @roleKey,
-        delivery_type = @deliveryType,
-        webhook_url = @webhookUrl,
-        dingtalk_secret = @dingtalkSecret,
-        dingtalk_keyword = @dingtalkKeyword,
-        preference = @preference,
-        active = @active,
-        updated_at = @updatedAt
-      WHERE id = @id
-    `).run({
-      ...next,
-      active: next.active ? 1 : 0,
-      updatedAt: now(),
-    });
+        name = ?, role_key = ?, delivery_type = ?, webhook_url = ?, dingtalk_secret = ?,
+        dingtalk_keyword = ?, preference = ?, active = ?, updated_at = ?
+      WHERE id = ?
+    `, args: [
+      next.name,
+      next.roleKey,
+      next.deliveryType,
+      next.webhookUrl,
+      next.dingtalkSecret,
+      next.dingtalkKeyword,
+      next.preference,
+      next.active ? 1 : 0,
+      now(),
+      id,
+    ] });
     return repo.contact(id);
   },
-  deleteContact(id: number) {
-    return db.prepare('DELETE FROM contacts WHERE id = ?').run(id).changes > 0;
+  async deleteContact(id: number) {
+    const result = await db.execute({ sql: 'DELETE FROM contacts WHERE id = ?', args: [id] });
+    return result.rowsAffected > 0;
   },
-  createInputRecord(sourceType: string, filename: string, normalizedText: string) {
-    const result = db.prepare(`
+  async createInputRecord(sourceType: string, filename: string, normalizedText: string) {
+    const result = await db.execute({ sql: `
       INSERT INTO input_records (source_type, filename, normalized_text, created_at)
       VALUES (?, ?, ?, ?)
-    `).run(sourceType, filename, normalizedText, now());
+    `, args: [sourceType, filename, normalizedText, now()] });
     return Number(result.lastInsertRowid);
   },
-  createGenerationRecord(inputRecordId: number | null, contactId: number, roleKey: RoleKey, draftContent: string) {
-    const result = db.prepare(`
+  async createGenerationRecord(inputRecordId: number | null, contactId: number, roleKey: RoleKey, draftContent: string) {
+    const result = await db.execute({ sql: `
       INSERT INTO generation_records (input_record_id, contact_id, role_key, draft_content, status, created_at)
       VALUES (?, ?, ?, ?, 'draft', ?)
-    `).run(inputRecordId, contactId, roleKey, draftContent, now());
+    `, args: [inputRecordId, contactId, roleKey, draftContent, now()] });
     return Number(result.lastInsertRowid);
   },
-  createSendRecord(input: {
+  async createSendRecord(input: {
     generationRecordId: number | null;
     contactId: number;
     deliveryType?: DeliveryType;
@@ -313,12 +326,12 @@ export const repo = {
     responseBody?: string;
     error?: string;
   }) {
-    const result = db.prepare(`
+    const result = await db.execute({ sql: `
       INSERT INTO send_records (
         generation_record_id, contact_id, delivery_type, webhook_url, payload, response_status, response_body, error, created_at
       )
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
+    `, args: [
       input.generationRecordId,
       input.contactId,
       input.deliveryType ?? 'generic_webhook',
@@ -328,25 +341,29 @@ export const repo = {
       input.responseBody ?? '',
       input.error ?? '',
       now(),
-    );
+    ] });
     return Number(result.lastInsertRowid);
   },
-  records() {
-    return {
-      generations: db.prepare(`
+  async records() {
+    const [generations, sends] = await Promise.all([
+      db.execute(`
         SELECT g.*, c.name AS contact_name
         FROM generation_records g
         LEFT JOIN contacts c ON c.id = g.contact_id
         ORDER BY g.id DESC
         LIMIT 30
-      `).all(),
-      sends: db.prepare(`
+      `),
+      db.execute(`
         SELECT s.*, c.name AS contact_name
         FROM send_records s
         LEFT JOIN contacts c ON c.id = s.contact_id
         ORDER BY s.id DESC
         LIMIT 30
-      `).all(),
+      `),
+    ]);
+    return {
+      generations: generations.rows.map((row) => rowObject(row, generations.columns)),
+      sends: sends.rows.map((row) => rowObject(row, sends.columns)),
     };
   },
 };

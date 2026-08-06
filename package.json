@@ -10,10 +10,11 @@
     "build": "tsc -b && vite build",
     "start": "node dist-server/index.js",
     "test": "vitest run",
-    "server:build": "tsc -p tsconfig.server.json"
+    "server:build": "tsc -p tsconfig.server.json",
+    "migrate:local-to-turso": "tsx server/migrateLocalSqlite.ts"
   },
   "dependencies": {
-    "better-sqlite3": "^12.6.2",
+    "@libsql/client": "^0.17.4",
     "dotenv": "^17.2.3",
     "express": "5.2.0",
     "lucide-react": "^0.561.0",
@@ -28,7 +29,6 @@
     "zod": "^4.1.13"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.13",
     "@types/express": "^5.0.5",
     "@types/multer": "^2.0.0",
     "@types/node": "^24.10.2",

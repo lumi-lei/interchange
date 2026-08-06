@@ -16,6 +16,15 @@ export function configureBaseMiddleware(app: express.Express) {
 }
 
 export function mountApi(app: express.Express, mountPath = '/api') {
+  app.use(mountPath, async (_req, _res, next) => {
+    try {
+      await migrate();
+      next();
+    } catch (error) {
+      next(error);
+    }
+  });
+
   if (mountPath) {
     app.use(mountPath, apiRateLimit, router);
     return;

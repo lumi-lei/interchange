@@ -40,43 +40,43 @@ router.get('/health', (_req, res) => {
   });
 });
 
-router.get('/roles', (_req, res) => {
-  res.json(repo.roles());
+router.get('/roles', async (_req, res) => {
+  res.json(await repo.roles());
 });
 
-router.put('/roles/:key', (req, res) => {
+router.put('/roles/:key', async (req, res) => {
   const key = roleKeySchema.parse(req.params.key) as RoleKey;
   const body = z.object({ customPreference: z.string().default('') }).parse(req.body);
-  res.json(repo.updateRole(key, body.customPreference));
+  res.json(await repo.updateRole(key, body.customPreference));
 });
 
-router.get('/contacts', (_req, res) => {
-  res.json(repo.contacts().map(toPublicContact));
+router.get('/contacts', async (_req, res) => {
+  res.json((await repo.contacts()).map(toPublicContact));
 });
 
-router.post('/contacts', (req, res) => {
+router.post('/contacts', async (req, res) => {
   const body = contactSchema.parse(req.body);
-  const created = repo.createContact(body as any);
+  const created = await repo.createContact(body as any);
   res.status(201).json(created ? toPublicContact(created) : null);
 });
 
-router.put('/contacts/:id', (req, res) => {
+router.put('/contacts/:id', async (req, res) => {
   const id = Number(req.params.id);
   const body = contactSchema.partial().parse(req.body);
-  const updated = repo.updateContact(id, body as any);
+  const updated = await repo.updateContact(id, body as any);
   if (!updated) return res.status(404).json({ error: 'Contact not found' });
   res.json(toPublicContact(updated));
 });
 
-router.delete('/contacts/:id', (req, res) => {
-  const deleted = repo.deleteContact(Number(req.params.id));
+router.delete('/contacts/:id', async (req, res) => {
+  const deleted = await repo.deleteContact(Number(req.params.id));
   res.status(deleted ? 204 : 404).send();
 });
 
 router.post('/inputs/parse', upload.single('file'), async (req, res) => {
   const typedText = typeof req.body.text === 'string' ? req.body.text.trim() : '';
   if (typedText) {
-    const inputRecordId = repo.createInputRecord('text', '', typedText);
+    const inputRecordId = await repo.createInputRecord('text', '', typedText);
     return res.json({ inputRecordId, sourceType: 'text', filename: '', text: typedText });
   }
 
@@ -89,7 +89,7 @@ router.post('/inputs/parse', upload.single('file'), async (req, res) => {
       error: 'No text could be extracted by local parsing. External model fallback is not implemented in this build.',
     });
   }
-  const inputRecordId = repo.createInputRecord(parsed.sourceType, parsed.filename, parsed.text);
+  const inputRecordId = await repo.createInputRecord(parsed.sourceType, parsed.filename, parsed.text);
   res.json({ inputRecordId, ...parsed });
 });
 
@@ -100,16 +100,16 @@ router.post('/generate', aiRateLimit, async (req, res) => {
     contactIds: z.array(z.number()).min(1),
   }).parse(req.body);
 
-  const roles = new Map(repo.roles().map((role) => [role.key, role]));
+  const roles = new Map((await repo.roles()).map((role) => [role.key, role]));
   const drafts = [];
 
   for (const contactId of body.contactIds) {
-    const contact = repo.contact(contactId);
+    const contact = await repo.contact(contactId);
     if (!contact || !contact.active) continue;
     const role = roles.get(contact.roleKey);
     if (!role) continue;
     const content = await generateDraft({ sourceText: body.sourceText, contact, role });
-    const generationRecordId = repo.createGenerationRecord(
+    const generationRecordId = await repo.createGenerationRecord(
       body.inputRecordId ?? null,
       contact.id,
       contact.roleKey,
@@ -132,14 +132,14 @@ router.post('/send', async (req, res) => {
 
   const results = [];
   for (const message of body.messages) {
-    const contact = repo.contact(message.contactId);
+    const contact = await repo.contact(message.contactId);
     if (!contact) {
       results.push({ contactId: message.contactId, ok: false, error: 'Contact not found' });
       continue;
     }
     if (!contact.webhookUrl) {
       const error = 'Webhook URL is empty';
-      const sendRecordId = repo.createSendRecord({
+      const sendRecordId = await repo.createSendRecord({
         generationRecordId: message.generationRecordId ?? null,
         contactId: contact.id,
         deliveryType: contact.deliveryType,
@@ -159,7 +159,7 @@ router.post('/send', async (req, res) => {
         body: JSON.stringify(delivery.payload),
       });
       const responseBody = await response.text();
-      const sendRecordId = repo.createSendRecord({
+      const sendRecordId = await repo.createSendRecord({
         generationRecordId: message.generationRecordId ?? null,
         contactId: contact.id,
         deliveryType: delivery.deliveryType,
@@ -172,7 +172,7 @@ router.post('/send', async (req, res) => {
       results.push({ contactId: contact.id, sendRecordId, ok: response.ok, status: response.status });
     } catch (error) {
       const messageText = error instanceof Error ? error.message : String(error);
-      const sendRecordId = repo.createSendRecord({
+      const sendRecordId = await repo.createSendRecord({
         generationRecordId: message.generationRecordId ?? null,
         contactId: contact.id,
         deliveryType: contact.deliveryType,
@@ -187,8 +187,8 @@ router.post('/send', async (req, res) => {
   res.json({ results });
 });
 
-router.get('/records', (_req, res) => {
-  res.json(repo.records());
+router.get('/records', async (_req, res) => {
+  res.json(await repo.records());
 });
 
 export { router, upload };
