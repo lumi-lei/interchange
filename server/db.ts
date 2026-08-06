@@ -298,9 +298,43 @@ export const repo = {
     ] });
     return repo.contact(id);
   },
+  async updateContactsActive(ids: number[], active: boolean) {
+    if (!ids.length) return [];
+    const placeholders = ids.map(() => '?').join(', ');
+    await db.execute({
+      sql: `UPDATE contacts SET active = ?, updated_at = ? WHERE id IN (${placeholders})`,
+      args: [active ? 1 : 0, now(), ...ids],
+    });
+    const result = await db.execute({
+      sql: `SELECT * FROM contacts WHERE id IN (${placeholders})`,
+      args: ids,
+    });
+    const contacts = result.rows.map((row) => mapContact(rowObject(row, result.columns)));
+    const contactMap = new Map(contacts.map((contact) => [contact.id, contact]));
+    return ids.flatMap((id) => {
+      const contact = contactMap.get(id);
+      return contact ? [contact] : [];
+    });
+  },
   async deleteContact(id: number) {
     const result = await db.execute({ sql: 'DELETE FROM contacts WHERE id = ?', args: [id] });
     return result.rowsAffected > 0;
+  },
+  async deleteInactiveContacts(ids: number[]) {
+    if (!ids.length) return [];
+    const placeholders = ids.map(() => '?').join(', ');
+    const matching = await db.execute({
+      sql: `SELECT id FROM contacts WHERE active = 0 AND id IN (${placeholders})`,
+      args: ids,
+    });
+    const deletedIds = matching.rows.map((row) => Number(value(row, 'id')));
+    if (!deletedIds.length) return [];
+    const deletedPlaceholders = deletedIds.map(() => '?').join(', ');
+    await db.execute({
+      sql: `DELETE FROM contacts WHERE active = 0 AND id IN (${deletedPlaceholders})`,
+      args: deletedIds,
+    });
+    return deletedIds;
   },
   async createInputRecord(sourceType: string, filename: string, normalizedText: string) {
     const result = await db.execute({ sql: `

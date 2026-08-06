@@ -284,8 +284,9 @@ export function App() {
     setBusy('contacts-batch');
     setError('');
     try {
-      const updatedContacts = await Promise.all(
-        filteredContacts.map((contact) => api.updateContact(contact.id, { active })),
+      const { contacts: updatedContacts } = await api.updateContactsActive(
+        filteredContacts.map((contact) => contact.id),
+        active,
       );
       const updatedMap = new Map(updatedContacts.map((contact) => [contact.id, contact]));
       setContacts((current) => current.map((contact) => updatedMap.get(contact.id) ?? contact));
@@ -307,8 +308,10 @@ export function App() {
     setBusy('contacts-batch');
     setError('');
     try {
-      await Promise.all(filteredContacts.map((contact) => api.deleteContact(contact.id)));
-      const deletedIds = new Set(filteredContacts.map((contact) => contact.id));
+      const { deletedIds: deletedContactIds } = await api.deleteInactiveContacts(
+        filteredContacts.map((contact) => contact.id),
+      );
+      const deletedIds = new Set(deletedContactIds);
       setContacts((current) => current.filter((contact) => !deletedIds.has(contact.id)));
       setSelectedContactIds((current) => current.filter((id) => !deletedIds.has(id)));
       setStatus(`已删除 ${deletedIds.size} 位停用收件人`);

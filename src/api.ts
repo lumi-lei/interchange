@@ -70,7 +70,19 @@ export const api = {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(contact),
     }),
+  updateContactsActive: (ids: number[], active: boolean) =>
+    request<{ contacts: Contact[] }>('/api/contacts/batch/active', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ids, active }),
+    }),
   deleteContact: (id: number) => request<void>(`/api/contacts/${id}`, { method: 'DELETE' }),
+  deleteInactiveContacts: (ids: number[]) =>
+    request<{ deletedIds: number[] }>('/api/contacts/batch/inactive', {
+      method: 'DELETE',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ids }),
+    }),
   parseInput: (formData: FormData) =>
     request<ParsedInput>('/api/inputs/parse', {
       method: 'POST',

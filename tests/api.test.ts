@@ -142,6 +142,35 @@ describe('Interchange API', () => {
     expect(enabled.body.active).toBe(true);
   });
 
+  it('updates and deletes contacts in batches through one API request per operation', async () => {
+    const app = createApp();
+    const first = await request(app)
+      .post('/api/contacts')
+      .send({ name: '批量联系人一', roleKey: 'qa', webhookUrl: '', preference: '', active: true })
+      .expect(201);
+    const second = await request(app)
+      .post('/api/contacts')
+      .send({ name: '批量联系人二', roleKey: 'product', webhookUrl: '', preference: '', active: true })
+      .expect(201);
+    const ids = [first.body.id, second.body.id];
+
+    const disabled = await request(app)
+      .patch('/api/contacts/batch/active')
+      .send({ ids, active: false })
+      .expect(200);
+    expect(disabled.body.contacts.map((contact: any) => contact.id)).toEqual(ids);
+    expect(disabled.body.contacts.every((contact: any) => contact.active === false)).toBe(true);
+
+    const deleted = await request(app)
+      .delete('/api/contacts/batch/inactive')
+      .send({ ids })
+      .expect(200);
+    expect(deleted.body.deletedIds).toEqual(ids);
+
+    const contacts = await request(app).get('/api/contacts').expect(200);
+    expect(contacts.body.some((contact: any) => ids.includes(contact.id))).toBe(false);
+  });
+
   it('skips inactive contacts during generation', async () => {
     const app = createApp();
     const contact = await request(app)

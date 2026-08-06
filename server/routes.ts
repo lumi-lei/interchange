@@ -19,6 +19,7 @@ const upload = multer({
 
 const roleKeySchema = z.string().refine(isRoleKey, 'Invalid role key');
 const deliveryTypeSchema = z.enum(['generic_webhook', 'dingtalk_robot']);
+const contactIdsSchema = z.array(z.number().int().positive()).min(1).max(500).transform((ids) => [...new Set(ids)]);
 
 const contactSchema = z.object({
   name: z.string().min(1),
@@ -66,6 +67,18 @@ router.put('/contacts/:id', async (req, res) => {
   const updated = await repo.updateContact(id, body as any);
   if (!updated) return res.status(404).json({ error: 'Contact not found' });
   res.json(toPublicContact(updated));
+});
+
+router.patch('/contacts/batch/active', async (req, res) => {
+  const body = z.object({ ids: contactIdsSchema, active: z.boolean() }).parse(req.body);
+  const contacts = await repo.updateContactsActive(body.ids, body.active);
+  res.json({ contacts: contacts.map(toPublicContact) });
+});
+
+router.delete('/contacts/batch/inactive', async (req, res) => {
+  const body = z.object({ ids: contactIdsSchema }).parse(req.body);
+  const deletedIds = await repo.deleteInactiveContacts(body.ids);
+  res.json({ deletedIds });
 });
 
 router.delete('/contacts/:id', async (req, res) => {
