@@ -520,7 +520,23 @@ export function App() {
                       );
                     }}
                   />
-                  <input aria-label="联系人姓名" value={contact.name} onChange={(event) => updateContact(contact.id, { name: event.target.value })} />
+                  <input
+                    aria-label="联系人姓名"
+                    value={contact.name}
+                    onChange={(event) => {
+                      const name = event.target.value;
+                      // 输入时先更新本地状态，避免受控输入框等待异步请求返回而回退到旧值。
+                      setContacts((current) =>
+                        current.map((item) => (item.id === contact.id ? { ...item, name } : item)),
+                      );
+                    }}
+                    onBlur={(event) => {
+                      const name = event.currentTarget.value;
+                      updateContact(contact.id, { name }).catch((err) =>
+                        setError(err instanceof Error ? err.message : String(err)),
+                      );
+                    }}
+                  />
                   <select aria-label="联系人角色" value={contact.roleKey} onChange={(event) => updateContact(contact.id, { roleKey: event.target.value })}>
                     {roles.map((item) => (
                       <option key={item.key} value={item.key}>{item.label}</option>
