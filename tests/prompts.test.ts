@@ -64,6 +64,8 @@ describe('draft prompts', () => {
 
     expect(messages[0].content).toContain('只输出建议正文');
     expect(messages[1].content).toContain('角色名称：豆包');
+    expect(messages[1].content).toContain('识别类别：通用 AI 助手');
+    expect(messages[1].content).toContain('不要将其理解为宠物、人物或其他实体');
     expect(messages[1].content).toContain('默认关注点');
   });
 
@@ -73,6 +75,13 @@ describe('draft prompts', () => {
     expect(messages[1].content).toContain('角色名称：豆包');
     expect(messages[1].content).toContain('偏好方案名称：严肃点');
     expect(messages[1].content).toContain('语气、结构、信息取舍和注意事项');
+  });
+
+  it('uses the manually selected profile over an ambiguous role name', () => {
+    const messages = buildRoleSuggestionMessages({ roleLabel: '豆包', roleProfileKey: 'ai_coding_assistant' });
+
+    expect(messages[1].content).toContain('识别类别：AI 编程助手');
+    expect(messages[1].content).toContain('代码上下文、实现边界、接口、测试和验收');
   });
 });
 
@@ -102,6 +111,8 @@ function sampleDraftRequest(): DraftRequest {
       defaultPreference: '默认偏好：先给结论。',
       templatePreference: '模板偏好：输出可执行任务。',
       customPreference: '自定义偏好：补充风险。',
+      roleProfileKey: '',
+      roleProfileDescription: '',
       isBuiltin: true,
       usageCount: 0,
       preferenceSets: [],

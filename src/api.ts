@@ -13,6 +13,8 @@ export type Role = {
   defaultPreference: string;
   templatePreference: string;
   customPreference: string;
+  roleProfileKey: string;
+  roleProfileDescription: string;
   isBuiltin: boolean;
   usageCount: number;
   preferenceSets: PreferenceSet[];
@@ -57,6 +59,15 @@ export type ParsedInput = {
 export type RoleSuggestionInput = {
   roleLabel: string;
   preferenceSetName?: string;
+  roleProfileKey?: string;
+  roleProfileDescription?: string;
+};
+
+export type RoleProfile = {
+  key: string;
+  label: string;
+  aliases: string[];
+  description: string;
 };
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
@@ -70,10 +81,11 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
 export const api = {
   health: () => request<{ ok: boolean; deepseekConfigured: boolean; model: string }>('/api/health'),
   roles: () => request<Role[]>('/api/roles'),
-  createRole: (role: Pick<Role, 'label' | 'defaultPreference'>) => request<Role>('/api/roles', {
+  roleProfiles: () => request<RoleProfile[]>('/api/role-profiles'),
+  createRole: (role: Pick<Role, 'label' | 'defaultPreference' | 'roleProfileKey' | 'roleProfileDescription'>) => request<Role>('/api/roles', {
     method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(role),
   }),
-  updateRole: (key: string, role: Partial<Pick<Role, 'label' | 'defaultPreference'>>) => request<Role>(`/api/roles/${key}`, {
+  updateRole: (key: string, role: Partial<Pick<Role, 'label' | 'defaultPreference' | 'roleProfileKey' | 'roleProfileDescription'>>) => request<Role>(`/api/roles/${key}`, {
     method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(role),
   }),
   generateRoleSuggestion: (input: RoleSuggestionInput) => request<{ content: string }>('/api/role-suggestions', {

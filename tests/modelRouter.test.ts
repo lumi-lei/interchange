@@ -84,6 +84,8 @@ function sampleDraftRequest(): DraftRequest {
       defaultPreference: '偏好直接给出实现要点。',
       templatePreference: '模板偏好。',
       customPreference: '',
+      roleProfileKey: '',
+      roleProfileDescription: '',
       isBuiltin: true,
       usageCount: 0,
       preferenceSets: [],

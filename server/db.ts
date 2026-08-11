@@ -64,13 +64,15 @@ export type RoleRow = {
   defaultPreference: string;
   templatePreference: string;
   customPreference: string;
+  roleProfileKey: string;
+  roleProfileDescription: string;
   isBuiltin: boolean;
   usageCount: number;
   preferenceSets: PreferenceSet[];
   updatedAt: string;
 };
 
-type RoleInput = { label: string; defaultPreference?: string };
+type RoleInput = { label: string; defaultPreference?: string; roleProfileKey?: string; roleProfileDescription?: string };
 type PreferenceSetInput = { name: string; content: string; sortOrder?: number };
 
 const useTurso = process.env.NODE_ENV !== 'test' && Boolean(config.tursoDatabaseUrl && config.tursoAuthToken);
@@ -115,6 +117,8 @@ async function runMigrations() {
       label TEXT NOT NULL,
       default_preference TEXT NOT NULL,
       custom_preference TEXT NOT NULL DEFAULT '',
+      role_profile_key TEXT NOT NULL DEFAULT '',
+      role_profile_description TEXT NOT NULL DEFAULT '',
       is_builtin INTEGER NOT NULL DEFAULT 0,
       updated_at TEXT NOT NULL
     );
@@ -180,6 +184,8 @@ async function runMigrations() {
   `);
 
   await ensureColumn('roles', 'is_builtin', 'INTEGER NOT NULL DEFAULT 0');
+  await ensureColumn('roles', 'role_profile_key', "TEXT NOT NULL DEFAULT ''");
+  await ensureColumn('roles', 'role_profile_description', "TEXT NOT NULL DEFAULT ''");
   await ensureColumn('contacts', 'role_mode', "TEXT NOT NULL DEFAULT 'template'");
   await ensureColumn('contacts', 'role_preference_id', 'INTEGER');
   await ensureColumn('contacts', 'custom_role_label', "TEXT NOT NULL DEFAULT ''");
@@ -290,6 +296,8 @@ function mapRole(row: any, preferenceSets: PreferenceSet[] = []): RoleRow {
     defaultPreference: String(row.default_preference ?? ''),
     templatePreference: roleTemplatePreference(String(row.key)),
     customPreference: String(row.custom_preference ?? ''),
+    roleProfileKey: String(row.role_profile_key ?? ''),
+    roleProfileDescription: String(row.role_profile_description ?? ''),
     isBuiltin: Boolean(row.is_builtin) || isBuiltinRoleKey(String(row.key)),
     usageCount: numericValue(row.usage_count),
     preferenceSets,
@@ -347,9 +355,16 @@ export const repo = {
     const key = `custom_${randomUUID()}`;
     const timestamp = now();
     await db.execute({
-      sql: `INSERT INTO roles (key, label, default_preference, custom_preference, is_builtin, updated_at)
-            VALUES (?, ?, ?, '', 0, ?)`,
-      args: [key, input.label.trim(), input.defaultPreference?.trim() ?? '', timestamp],
+      sql: `INSERT INTO roles (key, label, default_preference, custom_preference, role_profile_key, role_profile_description, is_builtin, updated_at)
+            VALUES (?, ?, ?, '', ?, ?, 0, ?)`,
+      args: [
+        key,
+        input.label.trim(),
+        input.defaultPreference?.trim() ?? '',
+        input.roleProfileKey?.trim() ?? '',
+        input.roleProfileDescription?.trim() ?? '',
+        timestamp,
+      ],
     });
     return (await repo.role(key))!;
   },
@@ -361,9 +376,13 @@ export const repo = {
       ? existing.defaultPreference
       : input.defaultPreference?.trim() ?? existing.defaultPreference;
     const customPreference = input.customPreference ?? existing.customPreference;
+    const roleProfileKey = existing.isBuiltin ? existing.roleProfileKey : input.roleProfileKey?.trim() ?? existing.roleProfileKey;
+    const roleProfileDescription = existing.isBuiltin
+      ? existing.roleProfileDescription
+      : input.roleProfileDescription?.trim() ?? existing.roleProfileDescription;
     await db.execute({
-      sql: `UPDATE roles SET label = ?, default_preference = ?, custom_preference = ?, updated_at = ? WHERE key = ?`,
-      args: [label, defaultPreference, customPreference, now(), key],
+      sql: `UPDATE roles SET label = ?, default_preference = ?, custom_preference = ?, role_profile_key = ?, role_profile_description = ?, updated_at = ? WHERE key = ?`,
+      args: [label, defaultPreference, customPreference, roleProfileKey, roleProfileDescription, now(), key],
     });
     return (await repo.role(key))!;
   },
@@ -484,6 +503,8 @@ export const repo = {
         defaultPreference: '',
         templatePreference: '',
         customPreference: contact.customRolePreference,
+        roleProfileKey: '',
+        roleProfileDescription: '',
         isBuiltin: false,
         usageCount: 0,
         preferenceSets: [],

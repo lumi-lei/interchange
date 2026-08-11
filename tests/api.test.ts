@@ -43,6 +43,8 @@ const sampleDraftRequest: DraftRequest = {
     defaultPreference: '偏好直接给出实现要点。',
     templatePreference: '模板偏好。',
     customPreference: '',
+    roleProfileKey: '',
+    roleProfileDescription: '',
     isBuiltin: true,
     usageCount: 0,
     preferenceSets: [],
@@ -66,6 +68,15 @@ describe('Interchange API', () => {
     const response = await request(createApp()).get('/api/health').expect(200);
     expect(response.body.ok).toBe(true);
     expect(response.body).not.toHaveProperty('deepseekApiKey');
+  });
+
+  it('exposes role profile presets without any model credentials', async () => {
+    const response = await request(createApp()).get('/api/role-profiles').expect(200);
+
+    expect(response.body).toEqual(expect.arrayContaining([
+      expect.objectContaining({ key: 'general_ai_assistant', label: '通用 AI 助手' }),
+      expect.objectContaining({ key: 'ai_coding_assistant', label: 'AI 编程助手' }),
+    ]));
   });
 
   it('serves JSON health responses from the Vercel API function entrypoint', async () => {
@@ -268,10 +279,11 @@ describe('Interchange API', () => {
     const app = createApp();
     const role = await request(app)
       .post('/api/roles')
-      .send({ label: '售前顾问', defaultPreference: '关注客户顾虑与下一步。' })
+      .send({ label: '售前顾问', defaultPreference: '关注客户顾虑与下一步。', roleProfileKey: 'project_management_tool' })
       .expect(201);
 
     expect(role.body.isBuiltin).toBe(false);
+    expect(role.body.roleProfileKey).toBe('project_management_tool');
     const preferenceSet = await request(app)
       .post(`/api/roles/${role.body.key}/preference-sets`)
       .send({ name: '简洁版', content: '先给结论，再给两项行动。', sortOrder: 0 })

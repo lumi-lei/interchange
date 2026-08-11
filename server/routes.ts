@@ -8,6 +8,7 @@ import { generateDraft, generateRoleSuggestion } from './ai/modelRouter.js';
 import { assertExternalFileModelAllowed, externalModelKindForSource } from './ai/compliance.js';
 import { parseUploadedFile } from './parser.js';
 import { aiRateLimit } from './rateLimit.js';
+import { findRoleProfileByKey, roleProfiles } from './roleProfiles.js';
 
 const router = express.Router();
 const upload = multer({
@@ -54,6 +55,8 @@ const contactUpdateSchema = z.object({
 const roleSchema = z.object({
   label: z.string().trim().min(1),
   defaultPreference: z.string().default(''),
+  roleProfileKey: z.string().trim().max(80).default(''),
+  roleProfileDescription: z.string().trim().max(400).default(''),
 });
 
 const preferenceSetSchema = z.object({
@@ -65,11 +68,26 @@ const preferenceSetSchema = z.object({
 const roleSuggestionSchema = z.object({
   roleLabel: z.string().trim().min(1).max(80),
   preferenceSetName: z.string().trim().min(1).max(80).optional(),
+  roleProfileKey: z.string().trim().max(80).optional(),
+  roleProfileDescription: z.string().trim().max(400).optional(),
 });
 
 async function validateContactConfiguration(contact: Pick<Contact, 'roleMode' | 'roleKey' | 'rolePreferenceId' | 'customRoleLabel' | 'customRolePreference'>) {
   const error = await repo.validateContactConfiguration(contact);
   if (error) throw Object.assign(new Error(error), { status: 400 });
+}
+
+function validateRoleProfile(input: { roleProfileKey?: string; roleProfileDescription?: string }) {
+  const key = input.roleProfileKey?.trim() ?? '';
+  const description = input.roleProfileDescription?.trim() ?? '';
+  if (!key) return;
+  if (key === 'custom') {
+    if (!description) throw Object.assign(new Error('使用自定义角色说明时，请填写说明内容。'), { status: 400 });
+    return;
+  }
+  if (!findRoleProfileByKey(key)) {
+    throw Object.assign(new Error('角色识别方式不存在，请重新选择。'), { status: 400 });
+  }
 }
 
 router.get('/health', (_req, res) => {
@@ -84,8 +102,13 @@ router.get('/roles', async (_req, res) => {
   res.json(await repo.roles());
 });
 
+router.get('/role-profiles', (_req, res) => {
+  res.json(roleProfiles);
+});
+
 router.post('/role-suggestions', aiRateLimit, async (req, res) => {
   const body = roleSuggestionSchema.parse(req.body);
+  validateRoleProfile(body);
   const content = await generateRoleSuggestion(body);
   if (!content) {
     throw Object.assign(new Error('模型未返回角色配置建议，请稍后重试。'), { status: 502 });
@@ -95,6 +118,7 @@ router.post('/role-suggestions', aiRateLimit, async (req, res) => {
 
 router.post('/roles', async (req, res) => {
   const body = roleSchema.parse(req.body);
+  validateRoleProfile(body);
   res.status(201).json(await repo.createRole(body));
 });
 
@@ -105,6 +129,7 @@ router.put('/roles/:key', async (req, res) => {
 
 router.patch('/roles/:key', async (req, res) => {
   const body = roleSchema.partial().parse(req.body);
+  validateRoleProfile(body);
   res.json(await repo.updateRole(req.params.key, body));
 });
 

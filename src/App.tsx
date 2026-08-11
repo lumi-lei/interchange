@@ -19,7 +19,7 @@ import {
   Upload,
   Users,
 } from 'lucide-react';
-import { api, type Contact, type ContactInput, type Draft, type Role } from './api';
+import { api, type Contact, type ContactInput, type Draft, type Role, type RoleProfile } from './api';
 
 type DraftState = Draft & { selected: boolean; editedContent: string; sendStatus?: string };
 type ContactStatusFilter = 'active' | 'inactive' | 'all';
@@ -44,6 +44,15 @@ const blankContact = (roleKey = 'product'): ContactInput => ({
   active: true,
 });
 
+function normalizeRoleName(value: string) {
+  return value.normalize('NFKC').trim().toLocaleLowerCase().replace(/[\s_\-—（）()[\]{}.,，。:：/\\]+/g, '');
+}
+
+function matchedRoleProfile(label: string, profiles: RoleProfile[]) {
+  const normalized = normalizeRoleName(label);
+  return profiles.find((profile) => profile.aliases.some((alias) => normalizeRoleName(alias) === normalized)) ?? null;
+}
+
 function AceternityCard({ children, className = '', as = 'section' }: AceternityCardProps) {
   const Component = as;
 
@@ -64,6 +73,7 @@ function AceternityCard({ children, className = '', as = 'section' }: Aceternity
 export function App() {
   const [health, setHealth] = useState<{ deepseekConfigured: boolean; model: string } | null>(null);
   const [roles, setRoles] = useState<Role[]>([]);
+  const [roleProfiles, setRoleProfiles] = useState<RoleProfile[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [selectedContactIds, setSelectedContactIds] = useState<number[]>([]);
   const [sourceText, setSourceText] = useState('');
@@ -78,6 +88,8 @@ export function App() {
   const [roleEditKey, setRoleEditKey] = useState('');
   const [newRoleLabel, setNewRoleLabel] = useState('');
   const [newRoleDefaultPreference, setNewRoleDefaultPreference] = useState('');
+  const [newRoleProfileKey, setNewRoleProfileKey] = useState('');
+  const [newRoleProfileDescription, setNewRoleProfileDescription] = useState('');
   const [preferenceSetName, setPreferenceSetName] = useState('');
   const [preferenceSetContent, setPreferenceSetContent] = useState('');
   const [contactSearch, setContactSearch] = useState('');
@@ -104,9 +116,10 @@ export function App() {
 
   async function load() {
     setError('');
-    const [healthData, roleData, contactData] = await Promise.all([api.health(), api.roles(), api.contacts()]);
+    const [healthData, roleData, profileData, contactData] = await Promise.all([api.health(), api.roles(), api.roleProfiles(), api.contacts()]);
     setHealth(healthData);
     setRoles(roleData);
+    setRoleProfiles(profileData);
     setContacts(contactData);
     setSelectedContactIds((current) => current.length ? current : contactData.filter((c) => c.active).map((c) => c.id));
     setContactDraft(blankContact(roleData[0]?.key ?? 'product'));
@@ -320,6 +333,8 @@ export function App() {
     const updated = await api.updateRole(role.key, {
       label: role.label,
       defaultPreference: role.defaultPreference,
+      roleProfileKey: role.roleProfileKey,
+      roleProfileDescription: role.roleProfileDescription,
     });
     setRoles((current) => current.map((item) => (item.key === updated.key ? updated : item)));
     setStatus(`${role.label} 角色偏好已保存`);
@@ -330,11 +345,18 @@ export function App() {
     setBusy('role');
     setError('');
     try {
-      const role = await api.createRole({ label: newRoleLabel, defaultPreference: newRoleDefaultPreference });
+      const role = await api.createRole({
+        label: newRoleLabel,
+        defaultPreference: newRoleDefaultPreference,
+        roleProfileKey: newRoleProfileKey,
+        roleProfileDescription: newRoleProfileDescription,
+      });
       setRoles((current) => [...current, role]);
       setRoleEditKey(role.key);
       setNewRoleLabel('');
       setNewRoleDefaultPreference('');
+      setNewRoleProfileKey('');
+      setNewRoleProfileDescription('');
       setStatus(`已新增角色：${role.label}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -346,6 +368,8 @@ export function App() {
   async function generateRoleSuggestion(
     roleLabel: string,
     preferenceSetName: string | undefined,
+    roleProfileKey: string,
+    roleProfileDescription: string,
     applySuggestion: (content: string) => void,
   ) {
     if (!roleLabel.trim()) {
@@ -363,6 +387,8 @@ export function App() {
       const { content } = await api.generateRoleSuggestion({
         roleLabel,
         ...(preferenceSetName !== undefined ? { preferenceSetName } : {}),
+        ...(roleProfileKey ? { roleProfileKey } : {}),
+        ...(roleProfileDescription ? { roleProfileDescription } : {}),
       });
       applySuggestion(content);
       setStatus(preferenceSetName !== undefined ? '已生成偏好方案内容建议，请确认后保存' : '已生成默认关注点建议，请确认后保存');
@@ -375,19 +401,19 @@ export function App() {
 
   function generateNewRoleDefaultPreference() {
     if (newRoleDefaultPreference.trim() && !window.confirm('生成的建议将覆盖当前默认关注点，是否继续？')) return;
-    void generateRoleSuggestion(newRoleLabel, undefined, setNewRoleDefaultPreference);
+    void generateRoleSuggestion(newRoleLabel, undefined, newRoleProfileKey, newRoleProfileDescription, setNewRoleDefaultPreference);
   }
 
   function generateCurrentRoleDefaultPreference(role: Role) {
     if (role.defaultPreference.trim() && !window.confirm('生成的建议将覆盖当前默认关注点，是否继续？')) return;
-    void generateRoleSuggestion(role.label, undefined, (content) => {
+    void generateRoleSuggestion(role.label, undefined, role.roleProfileKey, role.roleProfileDescription, (content) => {
       setRoles((items) => items.map((item) => (item.key === role.key ? { ...item, defaultPreference: content } : item)));
     });
   }
 
   function generatePreferenceSetContent(role: Role, name: string, currentContent: string, applySuggestion: (content: string) => void) {
     if (currentContent.trim() && !window.confirm('生成的建议将覆盖当前偏好方案内容，是否继续？')) return;
-    void generateRoleSuggestion(role.label, name, applySuggestion);
+    void generateRoleSuggestion(role.label, name, role.roleProfileKey, role.roleProfileDescription, applySuggestion);
   }
 
   async function deleteRole(role: Role) {
@@ -890,6 +916,15 @@ export function App() {
             <div className="role-editor">
               <div className="new-role-form">
                 <input aria-label="自定义角色名称" value={newRoleLabel} placeholder="新增自定义角色名称" onChange={(event) => setNewRoleLabel(event.target.value)} />
+                <select aria-label="新增角色识别方式" value={newRoleProfileKey} onChange={(event) => {
+                  setNewRoleProfileKey(event.target.value);
+                  if (event.target.value !== 'custom') setNewRoleProfileDescription('');
+                }}>
+                  <option value="">自动识别{newRoleLabel.trim() ? `：${matchedRoleProfile(newRoleLabel, roleProfiles)?.label ?? '未识别'}` : ''}</option>
+                  {roleProfiles.map((profile) => <option key={profile.key} value={profile.key}>{profile.label}</option>)}
+                  <option value="custom">自定义角色说明</option>
+                </select>
+                {newRoleProfileKey === 'custom' && <input aria-label="新增角色自定义说明" value={newRoleProfileDescription} placeholder="例如：负责向管理层汇报项目进展" onChange={(event) => setNewRoleProfileDescription(event.target.value)} />}
                 <input aria-label="自定义角色默认关注点" value={newRoleDefaultPreference} placeholder="可选：默认关注点" onChange={(event) => setNewRoleDefaultPreference(event.target.value)} />
                 <button onClick={generateNewRoleDefaultPreference} disabled={busy === 'role-suggestion' || !newRoleLabel.trim()}><Sparkles size={17} />AI 生成关注点</button>
                 <button onClick={createRole} disabled={busy === 'role'}><Plus size={17} />新增角色</button>
@@ -907,6 +942,20 @@ export function App() {
                       <label>角色名称
                         <input value={currentRole.label} onChange={(event) => setRoles((items) => items.map((item) => item.key === currentRole.key ? { ...item, label: event.target.value } : item))} />
                       </label>
+                      <label>角色识别方式
+                        <select value={currentRole.roleProfileKey} onChange={(event) => setRoles((items) => items.map((item) => item.key === currentRole.key ? {
+                          ...item,
+                          roleProfileKey: event.target.value,
+                          roleProfileDescription: event.target.value === 'custom' ? item.roleProfileDescription : '',
+                        } : item))}>
+                          <option value="">自动识别：{matchedRoleProfile(currentRole.label, roleProfiles)?.label ?? '未识别'}</option>
+                          {roleProfiles.map((profile) => <option key={profile.key} value={profile.key}>{profile.label}</option>)}
+                          <option value="custom">自定义角色说明</option>
+                        </select>
+                      </label>
+                      {currentRole.roleProfileKey === 'custom' && <label>自定义角色说明
+                        <textarea value={currentRole.roleProfileDescription} placeholder="例如：负责向管理层汇报项目进展" onChange={(event) => setRoles((items) => items.map((item) => item.key === currentRole.key ? { ...item, roleProfileDescription: event.target.value } : item))} />
+                      </label>}
                       <label>默认关注点（可留空）
                         <textarea value={currentRole.defaultPreference} placeholder="留空时仅按所选偏好方案和联系人补充生成" onChange={(event) => setRoles((items) => items.map((item) => item.key === currentRole.key ? { ...item, defaultPreference: event.target.value } : item))} />
                       </label>

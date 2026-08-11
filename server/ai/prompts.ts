@@ -1,4 +1,5 @@
 import type { DraftMessage, DraftRequest, RoleSuggestionRequest } from './types.js';
+import { resolveRoleProfile } from '../roleProfiles.js';
 
 export const systemPrompt = `你是 Interchange，一个面向 AI 编程团队的消息转换助手。
 你的任务是把同一份客观信息，改写为指定角色最想了解、可以直接发送的中文消息。
@@ -51,16 +52,23 @@ const roleSuggestionSystemPrompt = `你是 Interchange 的角色配置助手。
 4. 不得承诺未经确认的时间、结果或能力。
 5. 默认关注点控制在 45 至 90 个汉字；偏好方案内容控制在 70 至 150 个汉字。`;
 
-export function buildRoleSuggestionMessages({ roleLabel, preferenceSetName }: RoleSuggestionRequest): DraftMessage[] {
+export function buildRoleSuggestionMessages(input: RoleSuggestionRequest): DraftMessage[] {
+  const { roleLabel, preferenceSetName } = input;
+  const profile = resolveRoleProfile(input);
   const isPreferenceSet = Boolean(preferenceSetName?.trim());
+  const profileLines = profile
+    ? [`识别类别：${profile.label}`, `角色说明：${profile.description}`, '请严格按该角色说明生成，不要将其理解为宠物、人物或其他实体。']
+    : ['未识别到角色预设；请不要根据名称臆测其身份、物种、行业或能力，只给出通用且可编辑的建议。'];
   const task = isPreferenceSet
     ? [
       `角色名称：${roleLabel.trim()}`,
+      ...profileLines,
       `偏好方案名称：${preferenceSetName!.trim()}`,
       '请生成该偏好方案的内容，描述该角色输出信息时应采用的语气、结构、信息取舍和注意事项。',
     ]
     : [
       `角色名称：${roleLabel.trim()}`,
+      ...profileLines,
       '请生成该角色的默认关注点，描述其通常应优先关注的信息维度。',
     ];
 

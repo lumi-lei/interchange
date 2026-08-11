@@ -13,6 +13,8 @@ export type DraftResponse = {
 export type RoleSuggestionRequest = {
   roleLabel: string;
   preferenceSetName?: string;
+  roleProfileKey?: string;
+  roleProfileDescription?: string;
 };
 
 export type DraftMessage = {
