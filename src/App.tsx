@@ -250,6 +250,11 @@ export function App() {
   async function updateContact(id: number, patch: Partial<ContactInput>) {
     const updated = await api.updateContact(id, patch);
     setContacts((current) => current.map((contact) => (contact.id === id ? updated : contact)));
+    const roleAssociationChanged = ['roleMode', 'roleKey', 'rolePreferenceId'].some((key) => key in patch);
+    if (roleAssociationChanged) {
+      // 角色与偏好方案的使用人数依赖联系人关联，更新后立即同步以解除正确的删除保护。
+      setRoles(await api.roles());
+    }
     if (patch.active === false) {
       setSelectedContactIds((current) => current.filter((contactId) => contactId !== id));
     }
