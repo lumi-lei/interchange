@@ -333,8 +333,8 @@ export function App() {
     const updated = await api.updateRole(role.key, {
       label: role.label,
       defaultPreference: role.defaultPreference,
-      roleProfileKey: role.roleProfileKey,
-      roleProfileDescription: role.roleProfileDescription,
+      roleProfileKey: role.roleProfileKey === 'custom' ? 'custom' : '',
+      roleProfileDescription: role.roleProfileKey === 'custom' ? role.roleProfileDescription : '',
     });
     setRoles((current) => current.map((item) => (item.key === updated.key ? updated : item)));
     setStatus(`${role.label} 角色偏好已保存`);
@@ -406,14 +406,14 @@ export function App() {
 
   function generateCurrentRoleDefaultPreference(role: Role) {
     if (role.defaultPreference.trim() && !window.confirm('生成的建议将覆盖当前默认关注点，是否继续？')) return;
-    void generateRoleSuggestion(role.label, undefined, role.roleProfileKey, role.roleProfileDescription, (content) => {
+    void generateRoleSuggestion(role.label, undefined, role.roleProfileKey === 'custom' ? 'custom' : '', role.roleProfileKey === 'custom' ? role.roleProfileDescription : '', (content) => {
       setRoles((items) => items.map((item) => (item.key === role.key ? { ...item, defaultPreference: content } : item)));
     });
   }
 
   function generatePreferenceSetContent(role: Role, name: string, currentContent: string, applySuggestion: (content: string) => void) {
     if (currentContent.trim() && !window.confirm('生成的建议将覆盖当前偏好方案内容，是否继续？')) return;
-    void generateRoleSuggestion(role.label, name, role.roleProfileKey, role.roleProfileDescription, applySuggestion);
+    void generateRoleSuggestion(role.label, name, role.roleProfileKey === 'custom' ? 'custom' : '', role.roleProfileKey === 'custom' ? role.roleProfileDescription : '', applySuggestion);
   }
 
   async function deleteRole(role: Role) {
@@ -921,7 +921,6 @@ export function App() {
                   if (event.target.value !== 'custom') setNewRoleProfileDescription('');
                 }}>
                   <option value="">自动识别{newRoleLabel.trim() ? `：${matchedRoleProfile(newRoleLabel, roleProfiles)?.label ?? '未识别'}` : ''}</option>
-                  {roleProfiles.map((profile) => <option key={profile.key} value={profile.key}>{profile.label}</option>)}
                   <option value="custom">自定义角色说明</option>
                 </select>
                 {newRoleProfileKey === 'custom' && <input aria-label="新增角色自定义说明" value={newRoleProfileDescription} placeholder="例如：负责向管理层汇报项目进展" onChange={(event) => setNewRoleProfileDescription(event.target.value)} />}
@@ -943,13 +942,12 @@ export function App() {
                         <input value={currentRole.label} onChange={(event) => setRoles((items) => items.map((item) => item.key === currentRole.key ? { ...item, label: event.target.value } : item))} />
                       </label>
                       <label>角色识别方式
-                        <select value={currentRole.roleProfileKey} onChange={(event) => setRoles((items) => items.map((item) => item.key === currentRole.key ? {
+                        <select value={currentRole.roleProfileKey === 'custom' ? 'custom' : ''} onChange={(event) => setRoles((items) => items.map((item) => item.key === currentRole.key ? {
                           ...item,
                           roleProfileKey: event.target.value,
                           roleProfileDescription: event.target.value === 'custom' ? item.roleProfileDescription : '',
                         } : item))}>
                           <option value="">自动识别：{matchedRoleProfile(currentRole.label, roleProfiles)?.label ?? '未识别'}</option>
-                          {roleProfiles.map((profile) => <option key={profile.key} value={profile.key}>{profile.label}</option>)}
                           <option value="custom">自定义角色说明</option>
                         </select>
                       </label>

@@ -8,7 +8,7 @@ import { generateDraft, generateRoleSuggestion } from './ai/modelRouter.js';
 import { assertExternalFileModelAllowed, externalModelKindForSource } from './ai/compliance.js';
 import { parseUploadedFile } from './parser.js';
 import { aiRateLimit } from './rateLimit.js';
-import { findRoleProfileByKey, roleProfiles } from './roleProfiles.js';
+import { roleProfiles } from './roleProfiles.js';
 
 const router = express.Router();
 const upload = multer({
@@ -85,9 +85,7 @@ function validateRoleProfile(input: { roleProfileKey?: string; roleProfileDescri
     if (!description) throw Object.assign(new Error('使用自定义角色说明时，请填写说明内容。'), { status: 400 });
     return;
   }
-  if (!findRoleProfileByKey(key)) {
-    throw Object.assign(new Error('角色识别方式不存在，请重新选择。'), { status: 400 });
-  }
+  throw Object.assign(new Error('角色识别方式仅支持自动识别或自定义角色说明。'), { status: 400 });
 }
 
 router.get('/health', (_req, res) => {

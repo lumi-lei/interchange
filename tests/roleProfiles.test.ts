@@ -9,10 +9,10 @@ describe('role profile presets', () => {
     });
   });
 
-  it('uses a manually selected profile before a name-based preset', () => {
-    expect(resolveRoleProfile({ roleLabel: '豆包', roleProfileKey: 'ai_coding_assistant' })).toMatchObject({
-      key: 'ai_coding_assistant',
-      source: 'manual',
+  it('keeps automatic recognition when no custom description is selected', () => {
+    expect(resolveRoleProfile({ roleLabel: '豆包' })).toMatchObject({
+      key: 'general_ai_assistant',
+      source: 'preset',
     });
   });
 

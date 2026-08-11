@@ -77,11 +77,15 @@ describe('draft prompts', () => {
     expect(messages[1].content).toContain('语气、结构、信息取舍和注意事项');
   });
 
-  it('uses the manually selected profile over an ambiguous role name', () => {
-    const messages = buildRoleSuggestionMessages({ roleLabel: '豆包', roleProfileKey: 'ai_coding_assistant' });
+  it('uses a custom description over an ambiguous role name', () => {
+    const messages = buildRoleSuggestionMessages({
+      roleLabel: '豆包',
+      roleProfileKey: 'custom',
+      roleProfileDescription: '面向软件开发任务，关注代码上下文、测试和验收。',
+    });
 
-    expect(messages[1].content).toContain('识别类别：AI 编程助手');
-    expect(messages[1].content).toContain('代码上下文、实现边界、接口、测试和验收');
+    expect(messages[1].content).toContain('识别类别：自定义角色说明');
+    expect(messages[1].content).toContain('代码上下文、测试和验收');
   });
 });
 

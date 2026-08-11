@@ -39,7 +39,7 @@ export const roleProfiles: RoleProfile[] = [
 ];
 
 export type ResolvedRoleProfile = Pick<RoleProfile, 'key' | 'label' | 'description'> & {
-  source: 'manual' | 'preset' | 'custom';
+  source: 'preset' | 'custom';
 };
 
 function normalizeRoleName(value: string) {
@@ -66,11 +66,6 @@ export function resolveRoleProfile(input: {
 
   if (key === 'custom') {
     return description ? { key, label: '自定义角色说明', description, source: 'custom' } : null;
-  }
-
-  const manuallySelected = key ? findRoleProfileByKey(key) : null;
-  if (manuallySelected) {
-    return { ...manuallySelected, source: 'manual' };
   }
 
   const matched = findRoleProfileByName(input.roleLabel);

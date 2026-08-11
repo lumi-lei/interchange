@@ -279,11 +279,11 @@ describe('Interchange API', () => {
     const app = createApp();
     const role = await request(app)
       .post('/api/roles')
-      .send({ label: '售前顾问', defaultPreference: '关注客户顾虑与下一步。', roleProfileKey: 'project_management_tool' })
+      .send({ label: '售前顾问', defaultPreference: '关注客户顾虑与下一步。' })
       .expect(201);
 
     expect(role.body.isBuiltin).toBe(false);
-    expect(role.body.roleProfileKey).toBe('project_management_tool');
+    expect(role.body.roleProfileKey).toBe('');
     const preferenceSet = await request(app)
       .post(`/api/roles/${role.body.key}/preference-sets`)
       .send({ name: '简洁版', content: '先给结论，再给两项行动。', sortOrder: 0 })
