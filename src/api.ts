@@ -1,15 +1,31 @@
+export type PreferenceSet = {
+  id: number;
+  roleKey: string;
+  name: string;
+  content: string;
+  sortOrder: number;
+  usageCount: number;
+};
+
 export type Role = {
   key: string;
   label: string;
   defaultPreference: string;
   templatePreference: string;
   customPreference: string;
+  isBuiltin: boolean;
+  usageCount: number;
+  preferenceSets: PreferenceSet[];
 };
 
 export type Contact = {
   id: number;
   name: string;
+  roleMode: 'template' | 'custom';
   roleKey: string;
+  rolePreferenceId: number | null;
+  customRoleLabel: string;
+  customRolePreference: string;
   deliveryType: 'generic_webhook' | 'dingtalk_robot';
   webhookUrl: string;
   dingtalkKeyword: string;
@@ -42,65 +58,49 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const response = await fetch(url, options);
   const text = await response.text();
   const data = text ? JSON.parse(text) : null;
-  if (!response.ok) {
-    throw new Error(data?.error ?? `Request failed: ${response.status}`);
-  }
+  if (!response.ok) throw new Error(data?.error ?? `Request failed: ${response.status}`);
   return data as T;
 }
 
 export const api = {
   health: () => request<{ ok: boolean; deepseekConfigured: boolean; model: string }>('/api/health'),
   roles: () => request<Role[]>('/api/roles'),
-  updateRole: (key: string, customPreference: string) =>
-    request<Role>(`/api/roles/${key}`, {
-      method: 'PUT',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ customPreference }),
+  createRole: (role: Pick<Role, 'label' | 'defaultPreference'>) => request<Role>('/api/roles', {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(role),
+  }),
+  updateRole: (key: string, role: Partial<Pick<Role, 'label' | 'defaultPreference'>>) => request<Role>(`/api/roles/${key}`, {
+    method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(role),
+  }),
+  deleteRole: (key: string) => request<void>(`/api/roles/${key}`, { method: 'DELETE' }),
+  createPreferenceSet: (roleKey: string, preferenceSet: Pick<PreferenceSet, 'name' | 'content' | 'sortOrder'>) =>
+    request<PreferenceSet>(`/api/roles/${roleKey}/preference-sets`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(preferenceSet),
     }),
+  updatePreferenceSet: (id: number, preferenceSet: Partial<Pick<PreferenceSet, 'name' | 'content' | 'sortOrder'>>) =>
+    request<PreferenceSet>(`/api/preference-sets/${id}`, {
+      method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(preferenceSet),
+    }),
+  deletePreferenceSet: (id: number) => request<void>(`/api/preference-sets/${id}`, { method: 'DELETE' }),
   contacts: () => request<Contact[]>('/api/contacts'),
-  createContact: (contact: ContactInput) =>
-    request<Contact>('/api/contacts', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(contact),
-    }),
-  updateContact: (id: number, contact: Partial<ContactInput>) =>
-    request<Contact>(`/api/contacts/${id}`, {
-      method: 'PUT',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(contact),
-    }),
-  updateContactsActive: (ids: number[], active: boolean) =>
-    request<{ contacts: Contact[] }>('/api/contacts/batch/active', {
-      method: 'PATCH',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ ids, active }),
-    }),
+  createContact: (contact: ContactInput) => request<Contact>('/api/contacts', {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(contact),
+  }),
+  updateContact: (id: number, contact: Partial<ContactInput>) => request<Contact>(`/api/contacts/${id}`, {
+    method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(contact),
+  }),
+  updateContactsActive: (ids: number[], active: boolean) => request<{ contacts: Contact[] }>('/api/contacts/batch/active', {
+    method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ids, active }),
+  }),
   deleteContact: (id: number) => request<void>(`/api/contacts/${id}`, { method: 'DELETE' }),
-  deleteInactiveContacts: (ids: number[]) =>
-    request<{ deletedIds: number[] }>('/api/contacts/batch/inactive', {
-      method: 'DELETE',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ ids }),
-    }),
-  parseInput: (formData: FormData) =>
-    request<ParsedInput>('/api/inputs/parse', {
-      method: 'POST',
-      body: formData,
-    }),
-  generate: (sourceText: string, inputRecordId: number | null, contactIds: number[]) =>
-    request<{ drafts: Draft[] }>('/api/generate', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ sourceText, inputRecordId, contactIds }),
-    }),
+  deleteInactiveContacts: (ids: number[]) => request<{ deletedIds: number[] }>('/api/contacts/batch/inactive', {
+    method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ids }),
+  }),
+  parseInput: (formData: FormData) => request<ParsedInput>('/api/inputs/parse', { method: 'POST', body: formData }),
+  generate: (sourceText: string, inputRecordId: number | null, contactIds: number[]) => request<{ drafts: Draft[] }>('/api/generate', {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ sourceText, inputRecordId, contactIds }),
+  }),
   send: (messages: Array<{ generationRecordId: number | null; contactId: number; content: string }>) =>
-    request<{ results: Array<{ contactId: number; sendRecordId?: number; ok: boolean; status?: number; error?: string }> }>(
-      '/api/send',
-      {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ messages }),
-      },
-    ),
+    request<{ results: Array<{ contactId: number; sendRecordId?: number; ok: boolean; status?: number; error?: string }> }>('/api/send', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ messages }),
+    }),
 };

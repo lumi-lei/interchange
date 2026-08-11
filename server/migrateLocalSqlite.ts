@@ -6,6 +6,7 @@ import { db, migrate } from './db.js';
 
 const tables = [
   { name: 'roles', primaryKey: 'key' },
+  { name: 'role_preference_sets', primaryKey: 'id' },
   { name: 'contacts', primaryKey: 'id' },
   { name: 'input_records', primaryKey: 'id' },
   { name: 'generation_records', primaryKey: 'id' },
@@ -18,6 +19,7 @@ function columnNames(rows: Row[]) {
 
 async function copyTable(source: ReturnType<typeof createClient>, table: typeof tables[number]) {
   const sourceColumns = columnNames((await source.execute(`PRAGMA table_info(${table.name})`)).rows);
+  if (!sourceColumns.length) return 0;
   const targetColumns = columnNames((await db.execute(`PRAGMA table_info(${table.name})`)).rows);
   const columns = targetColumns.filter((column) => sourceColumns.includes(column));
   if (!columns.includes(table.primaryKey)) {
@@ -62,6 +64,16 @@ async function main() {
       total += copied;
       console.log(`${table.name}: 已迁移 ${copied} 条`);
     }
+    await db.execute(`
+      INSERT INTO role_preference_sets (role_key, name, content, sort_order, created_at, updated_at)
+      SELECT r.key, '原有自定义偏好', r.custom_preference, 0, r.updated_at, r.updated_at
+      FROM roles r
+      WHERE TRIM(r.custom_preference) <> ''
+        AND NOT EXISTS (
+          SELECT 1 FROM role_preference_sets p
+          WHERE p.role_key = r.key AND p.name = '原有自定义偏好'
+        )
+    `);
     console.log(`迁移完成：共 ${total} 条记录已写入 Turso。`);
   } finally {
     source.close();

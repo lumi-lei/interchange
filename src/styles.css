@@ -606,6 +606,18 @@ input[type='checkbox']:disabled {
   font-size: 0.83rem;
 }
 
+.contact-role-config {
+  grid-column: 2 / -1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.contact-role-config > input:only-child,
+.contact-role-config > select:only-child {
+  grid-column: span 2;
+}
+
 .new-contact {
   display: grid;
   grid-template-columns: 1fr 0.78fr 0.82fr 1.18fr 0.9fr 0.9fr auto;
@@ -737,6 +749,170 @@ input[type='checkbox']:disabled {
   margin-bottom: 10px;
 }
 
+.role-template-layout {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.42fr) minmax(0, 1fr);
+  gap: 14px;
+}
+
+.role-template-list {
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  max-height: 520px;
+  overflow: auto;
+  padding-right: 3px;
+}
+
+.role-template-list button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 42px;
+  text-align: left;
+}
+
+.role-template-list button small {
+  color: var(--muted);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.role-template-list button.active {
+  border-color: rgba(8, 127, 140, 0.35);
+  background: rgba(8, 127, 140, 0.1);
+  color: var(--accent-strong);
+}
+
+.new-role-form,
+.new-preference-set-form {
+  display: grid;
+  gap: 8px;
+}
+
+.new-role-form {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) auto;
+  margin-bottom: 14px;
+}
+
+.role-editor-content {
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+
+.role-editor-heading,
+.role-editor-actions,
+.preference-set-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.role-editor-heading {
+  margin-bottom: 10px;
+  font-size: 1.02rem;
+}
+
+.role-badge {
+  border-radius: 999px;
+  background: rgba(8, 127, 140, 0.1);
+  color: var(--accent-strong);
+  padding: 4px 8px;
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.role-badge.builtin {
+  background: rgba(20, 33, 61, 0.08);
+  color: var(--muted);
+}
+
+.role-editor label {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0;
+  color: var(--muted);
+  font-size: 0.87rem;
+  font-weight: 800;
+}
+
+.role-editor label textarea {
+  min-height: 82px;
+  margin: 0;
+}
+
+.role-editor-actions {
+  justify-content: flex-start;
+  margin: 10px 0 16px;
+}
+
+.preference-set-section {
+  border-top: 1px solid var(--line);
+  margin-top: 14px;
+  padding-top: 14px;
+}
+
+.preference-set-heading span,
+.muted-copy {
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.preference-set-list {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.preference-set-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.55);
+  padding: 9px;
+}
+
+.preference-set-fields {
+  display: grid;
+  gap: 6px;
+}
+
+.preference-set-fields textarea {
+  min-height: 68px;
+}
+
+.preference-set-actions {
+  display: grid;
+  align-content: start;
+  gap: 5px;
+}
+
+.preference-set-actions button {
+  min-height: 30px;
+  padding: 0 8px;
+  font-size: 0.78rem;
+}
+
+.preference-set-item p,
+.preference-set-item small {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  white-space: pre-wrap;
+}
+
+.preference-set-item small {
+  grid-column: 1 / -1;
+}
+
+.new-preference-set-form textarea {
+  min-height: 82px;
+}
+
 .draft-head label {
   min-width: 0;
   display: flex;
@@ -828,7 +1004,9 @@ input[type='checkbox']:disabled {
 
   .contact-row,
   .contact-toolbar,
-  .new-contact {
+  .new-contact,
+  .new-role-form,
+  .role-template-layout {
     grid-template-columns: 1fr;
   }
 
@@ -837,6 +1015,12 @@ input[type='checkbox']:disabled {
   }
 
   .contact-row small {
+    grid-column: auto;
+  }
+
+  .contact-role-config,
+  .contact-role-config > input:only-child,
+  .contact-role-config > select:only-child {
     grid-column: auto;
   }
 

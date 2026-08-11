@@ -32,7 +32,11 @@ type AceternityCardProps = {
 
 const blankContact = (roleKey = 'product'): ContactInput => ({
   name: '',
+  roleMode: 'template',
   roleKey,
+  rolePreferenceId: null,
+  customRoleLabel: '',
+  customRolePreference: '',
   deliveryType: 'generic_webhook',
   webhookUrl: '',
   dingtalkKeyword: '',
@@ -72,7 +76,10 @@ export function App() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState('');
   const [roleEditKey, setRoleEditKey] = useState('');
-  const [dirtyRoleKeys, setDirtyRoleKeys] = useState<Set<string>>(new Set());
+  const [newRoleLabel, setNewRoleLabel] = useState('');
+  const [newRoleDefaultPreference, setNewRoleDefaultPreference] = useState('');
+  const [preferenceSetName, setPreferenceSetName] = useState('');
+  const [preferenceSetContent, setPreferenceSetContent] = useState('');
   const [contactSearch, setContactSearch] = useState('');
   const [contactRoleFilter, setContactRoleFilter] = useState('all');
   const [contactStatusFilter, setContactStatusFilter] = useState<ContactStatusFilter>('active');
@@ -84,7 +91,8 @@ export function App() {
       const matchesStatus =
         contactStatusFilter === 'all'
           || (contactStatusFilter === 'active' ? contact.active : !contact.active);
-      const matchesRole = contactRoleFilter === 'all' || contact.roleKey === contactRoleFilter;
+      const matchesRole = contactRoleFilter === 'all'
+        || (contactRoleFilter === 'custom' ? contact.roleMode === 'custom' : contact.roleMode === 'template' && contact.roleKey === contactRoleFilter);
       const matchesSearch =
         !query
         || contact.name.toLocaleLowerCase().includes(query)
@@ -102,7 +110,6 @@ export function App() {
     setContacts(contactData);
     setSelectedContactIds((current) => current.length ? current : contactData.filter((c) => c.active).map((c) => c.id));
     setContactDraft(blankContact(roleData[0]?.key ?? 'product'));
-    setDirtyRoleKeys(new Set());
   }
 
   useEffect(() => {
@@ -183,7 +190,6 @@ export function App() {
     setError('');
     setDrafts([]);
     try {
-      await saveDirtyRolesBeforeGenerate();
       const activeIds = selectedContactIds.filter((id) => contacts.some((contact) => contact.id === id && contact.active));
       const result = await api.generate(sourceText, inputRecordId, activeIds);
       setDrafts(result.drafts.map((draft) => ({ ...draft, selected: true, editedContent: draft.content })));
@@ -193,23 +199,6 @@ export function App() {
     } finally {
       setBusy('');
     }
-  }
-
-  async function saveDirtyRolesBeforeGenerate() {
-    const dirtyRoles = roles.filter((role) => dirtyRoleKeys.has(role.key));
-    if (!dirtyRoles.length) return;
-
-    setStatus(`正在保存 ${dirtyRoles.length} 个角色说话习惯...`);
-    const updatedRoles = await Promise.all(
-      dirtyRoles.map((role) => api.updateRole(role.key, role.customPreference)),
-    );
-    const updatedMap = new Map(updatedRoles.map((role) => [role.key, role]));
-    setRoles((current) => current.map((role) => updatedMap.get(role.key) ?? role));
-    setDirtyRoleKeys((current) => {
-      const next = new Set(current);
-      for (const role of updatedRoles) next.delete(role.key);
-      return next;
-    });
   }
 
   async function sendSelected() {
@@ -323,14 +312,96 @@ export function App() {
   }
 
   async function saveRole(role: Role) {
-    const updated = await api.updateRole(role.key, role.customPreference);
-    setRoles((current) => current.map((item) => (item.key === updated.key ? updated : item)));
-    setDirtyRoleKeys((current) => {
-      const next = new Set(current);
-      next.delete(updated.key);
-      return next;
+    const updated = await api.updateRole(role.key, {
+      label: role.label,
+      defaultPreference: role.defaultPreference,
     });
+    setRoles((current) => current.map((item) => (item.key === updated.key ? updated : item)));
     setStatus(`${role.label} 角色偏好已保存`);
+  }
+
+  async function createRole() {
+    if (!newRoleLabel.trim()) return setError('请输入自定义角色名称');
+    setBusy('role');
+    setError('');
+    try {
+      const role = await api.createRole({ label: newRoleLabel, defaultPreference: newRoleDefaultPreference });
+      setRoles((current) => [...current, role]);
+      setRoleEditKey(role.key);
+      setNewRoleLabel('');
+      setNewRoleDefaultPreference('');
+      setStatus(`已新增角色：${role.label}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy('');
+    }
+  }
+
+  async function deleteRole(role: Role) {
+    if (!window.confirm(`确定删除“${role.label}”吗？`)) return;
+    try {
+      await api.deleteRole(role.key);
+      setRoles((current) => current.filter((item) => item.key !== role.key));
+      setRoleEditKey('');
+      setStatus(`已删除角色：${role.label}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  async function createPreferenceSet(role: Role) {
+    if (!preferenceSetName.trim() || !preferenceSetContent.trim()) return setError('请填写偏好方案名称和内容');
+    try {
+      await api.createPreferenceSet(role.key, {
+        name: preferenceSetName,
+        content: preferenceSetContent,
+        sortOrder: role.preferenceSets.length,
+      });
+      setPreferenceSetName('');
+      setPreferenceSetContent('');
+      setRoles(await api.roles());
+      setStatus(`已为 ${role.label} 新增偏好方案`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  async function deletePreferenceSet(role: Role, preferenceSetId: number) {
+    try {
+      await api.deletePreferenceSet(preferenceSetId);
+      setRoles(await api.roles());
+      setStatus(`已删除 ${role.label} 的偏好方案`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  async function savePreferenceSet(preferenceSetId: number, name: string, content: string) {
+    if (!name.trim() || !content.trim()) return setError('偏好方案名称和内容不能为空');
+    try {
+      await api.updatePreferenceSet(preferenceSetId, { name, content });
+      setRoles(await api.roles());
+      setStatus('偏好方案已保存');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  async function movePreferenceSet(role: Role, index: number, direction: -1 | 1) {
+    const targetIndex = index + direction;
+    const current = role.preferenceSets[index];
+    const target = role.preferenceSets[targetIndex];
+    if (!current || !target) return;
+    try {
+      await Promise.all([
+        api.updatePreferenceSet(current.id, { sortOrder: target.sortOrder }),
+        api.updatePreferenceSet(target.id, { sortOrder: current.sortOrder }),
+      ]);
+      setRoles(await api.roles());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
   }
 
   const selectedCount = selectedContactIds.filter((id) => contacts.some((contact) => contact.id === id && contact.active)).length;
@@ -340,7 +411,7 @@ export function App() {
   const inactiveContactCount = contacts.length - activeContactCount;
   const currentRoleKey = roleEditKey || roles[0]?.key;
   const canDeleteFilteredContacts = filteredContacts.length > 0 && filteredContacts.every((contact) => !contact.active);
-  const dirtyRoleCount = dirtyRoleKeys.size;
+  const currentRole = roles.find((role) => role.key === currentRoleKey);
 
   return (
     <main className="shell">
@@ -454,6 +525,7 @@ export function App() {
               onChange={(event) => setContactRoleFilter(event.target.value)}
             >
               <option value="all">全部角色</option>
+              <option value="custom">联系人专属角色</option>
               {roles.map((role) => (
                 <option key={role.key} value={role.key}>{role.label}</option>
               ))}
@@ -507,6 +579,7 @@ export function App() {
               <div className="empty-state compact">当前筛选下没有收件人。</div>
             ) : filteredContacts.map((contact) => {
               const role = roleMap.get(contact.roleKey);
+              const roleLabel = contact.roleMode === 'custom' ? contact.customRoleLabel : role?.label ?? '已删除角色';
               const selected = selectedContactIds.includes(contact.id);
               return (
                 <div className={`contact-row ${contact.active ? '' : 'inactive'}`} key={contact.id}>
@@ -540,10 +613,26 @@ export function App() {
                       );
                     }}
                   />
-                  <select aria-label="联系人角色" value={contact.roleKey} onChange={(event) => updateContact(contact.id, { roleKey: event.target.value })}>
-                    {roles.map((item) => (
-                      <option key={item.key} value={item.key}>{item.label}</option>
-                    ))}
+                  <select
+                    aria-label="联系人角色"
+                    value={contact.roleMode === 'custom' ? 'custom' : contact.roleKey}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      if (value === 'custom') {
+                        updateContact(contact.id, {
+                          roleMode: 'custom',
+                          roleKey: '',
+                          rolePreferenceId: null,
+                          customRoleLabel: contact.customRoleLabel || '联系人专属角色',
+                          customRolePreference: contact.customRolePreference || '请按收件人的自定义偏好生成。',
+                        }).catch((err) => setError(err.message));
+                        return;
+                      }
+                      updateContact(contact.id, { roleMode: 'template', roleKey: value, rolePreferenceId: null }).catch((err) => setError(err.message));
+                    }}
+                  >
+                    {roles.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}
+                    <option value="custom">联系人专属角色</option>
                   </select>
                   <select
                     aria-label="发送通道"
@@ -600,10 +689,48 @@ export function App() {
                       <Trash2 size={16} />
                     </button>
                   )}
+                  <div className="contact-role-config">
+                    {contact.roleMode === 'template' ? (
+                      <select
+                        aria-label="联系人偏好方案"
+                        value={contact.rolePreferenceId ?? ''}
+                        onChange={(event) => updateContact(contact.id, {
+                          rolePreferenceId: event.target.value ? Number(event.target.value) : null,
+                        }).catch((err) => setError(err.message))}
+                      >
+                        <option value="">不使用角色偏好方案</option>
+                        {role?.preferenceSets.map((set) => <option key={set.id} value={set.id}>{set.name}</option>)}
+                      </select>
+                    ) : (
+                      <>
+                        <input
+                          aria-label="联系人专属角色名称"
+                          value={contact.customRoleLabel}
+                          placeholder="专属角色名称"
+                          onChange={(event) => setContacts((current) => current.map((item) => item.id === contact.id ? { ...item, customRoleLabel: event.target.value } : item))}
+                          onBlur={(event) => updateContact(contact.id, { customRoleLabel: event.currentTarget.value }).catch((err) => setError(err.message))}
+                        />
+                        <input
+                          aria-label="联系人专属角色偏好"
+                          value={contact.customRolePreference}
+                          placeholder="完全按这份偏好生成"
+                          onChange={(event) => setContacts((current) => current.map((item) => item.id === contact.id ? { ...item, customRolePreference: event.target.value } : item))}
+                          onBlur={(event) => updateContact(contact.id, { customRolePreference: event.currentTarget.value }).catch((err) => setError(err.message))}
+                        />
+                      </>
+                    )}
+                    <input
+                      aria-label="联系人补充偏好"
+                      value={contact.preference}
+                      placeholder="可选：联系人补充偏好"
+                      onChange={(event) => setContacts((current) => current.map((item) => item.id === contact.id ? { ...item, preference: event.target.value } : item))}
+                      onBlur={(event) => updateContact(contact.id, { preference: event.currentTarget.value }).catch((err) => setError(err.message))}
+                    />
+                  </div>
                   <small>
                     {contact.deliveryType === 'dingtalk_robot' ? '钉钉 Markdown 发送' : '通用 Webhook 发送'}
                     {' · '}
-                    {role?.defaultPreference}
+                    {roleLabel}{contact.roleMode === 'template' && role?.defaultPreference ? ` · ${role.defaultPreference}` : ''}
                   </small>
                 </div>
               );
@@ -619,13 +746,34 @@ export function App() {
             />
             <select
               aria-label="新增收件人角色"
-              value={contactDraft.roleKey}
-              onChange={(event) => setContactDraft({ ...contactDraft, roleKey: event.target.value })}
+              value={contactDraft.roleMode === 'custom' ? 'custom' : contactDraft.roleKey}
+              onChange={(event) => {
+                const value = event.target.value;
+                setContactDraft(value === 'custom'
+                  ? { ...contactDraft, roleMode: 'custom', roleKey: '', rolePreferenceId: null }
+                  : { ...contactDraft, roleMode: 'template', roleKey: value, rolePreferenceId: null });
+              }}
             >
               {roles.map((role) => (
                 <option key={role.key} value={role.key}>{role.label}</option>
               ))}
+              <option value="custom">联系人专属角色</option>
             </select>
+            {contactDraft.roleMode === 'template' ? (
+              <select
+                aria-label="新增收件人偏好方案"
+                value={contactDraft.rolePreferenceId ?? ''}
+                onChange={(event) => setContactDraft({ ...contactDraft, rolePreferenceId: event.target.value ? Number(event.target.value) : null })}
+              >
+                <option value="">不使用角色偏好方案</option>
+                {roleMap.get(contactDraft.roleKey)?.preferenceSets.map((set) => <option key={set.id} value={set.id}>{set.name}</option>)}
+              </select>
+            ) : (
+              <>
+                <input aria-label="新增收件人专属角色名称" value={contactDraft.customRoleLabel} placeholder="专属角色名称" onChange={(event) => setContactDraft({ ...contactDraft, customRoleLabel: event.target.value })} />
+                <input aria-label="新增收件人专属角色偏好" value={contactDraft.customRolePreference} placeholder="完全按这份偏好生成" onChange={(event) => setContactDraft({ ...contactDraft, customRolePreference: event.target.value })} />
+              </>
+            )}
             <select
               aria-label="新增收件人发送通道"
               value={contactDraft.deliveryType}
@@ -670,57 +818,93 @@ export function App() {
           <div className="panel-title">
             <Settings2 size={20} />
             <div>
-              <h2>角色说话习惯</h2>
-              <p>保留岗位差异，也保留人的语气</p>
+              <h2>角色模板与偏好</h2>
+              <p>内置岗位保持默认规则；自定义角色和偏好方案可按需复用</p>
             </div>
           </div>
-          <div className="role-tabs">
-            {roles.map((role) => (
-              <button
-                key={role.key}
-                className={currentRoleKey === role.key ? 'active' : ''}
-                onClick={() => setRoleEditKey(role.key)}
-              >
-                {role.label}
-              </button>
-            ))}
-          </div>
-          {roles
-            .filter((role) => role.key === currentRoleKey)
-            .map((role) => (
-              <div className="role-editor" key={role.key}>
-                <p>{role.defaultPreference}</p>
-                {role.templatePreference && (
-                  <div className="role-template">
-                    <strong>推荐提示词模板</strong>
-                    <pre>{role.templatePreference}</pre>
-                  </div>
-                )}
-                <textarea
-                  aria-label={`${role.label} 角色说话习惯`}
-                  value={role.customPreference}
-                  placeholder="补充你自己的表达偏好，例如：更口语、先说结论、必须列风险..."
-                  onChange={(event) => {
-                    const customPreference = event.target.value;
-                    setRoles((current) =>
-                      current.map((item) =>
-                        item.key === role.key ? { ...item, customPreference } : item,
-                      ),
-                    );
-                    setDirtyRoleKeys((current) => {
-                      const next = new Set(current);
-                      next.add(role.key);
-                      return next;
-                    });
-                  }}
-                />
-                {dirtyRoleKeys.has(role.key) && <small>有未保存修改，生成前会自动保存。</small>}
-                <button onClick={() => saveRole(role)}>
-                  <Save size={17} />
-                  保存偏好
+          <div className="role-template-layout">
+            <div className="role-template-list" aria-label="角色模板列表">
+              {roles.map((role) => (
+                <button
+                  key={role.key}
+                  className={currentRoleKey === role.key ? 'active' : ''}
+                  onClick={() => setRoleEditKey(role.key)}
+                >
+                  <span>{role.label}</span>
+                  <small>{role.isBuiltin ? '内置' : `${role.usageCount} 位联系人`}</small>
                 </button>
+              ))}
+            </div>
+            <div className="role-editor">
+              <div className="new-role-form">
+                <input aria-label="自定义角色名称" value={newRoleLabel} placeholder="新增自定义角色名称" onChange={(event) => setNewRoleLabel(event.target.value)} />
+                <input aria-label="自定义角色默认关注点" value={newRoleDefaultPreference} placeholder="可选：默认关注点" onChange={(event) => setNewRoleDefaultPreference(event.target.value)} />
+                <button onClick={createRole} disabled={busy === 'role'}><Plus size={17} />新增角色</button>
               </div>
-            ))}
+              {currentRole ? (
+                <div className="role-editor-content">
+                  <div className="role-editor-heading">
+                    <strong>{currentRole.label}</strong>
+                    <span className={currentRole.isBuiltin ? 'role-badge builtin' : 'role-badge'}>{currentRole.isBuiltin ? '内置角色' : `${currentRole.usageCount} 位联系人使用`}</span>
+                  </div>
+                  {currentRole.isBuiltin ? (
+                    <p>{currentRole.defaultPreference}</p>
+                  ) : (
+                    <>
+                      <label>角色名称
+                        <input value={currentRole.label} onChange={(event) => setRoles((items) => items.map((item) => item.key === currentRole.key ? { ...item, label: event.target.value } : item))} />
+                      </label>
+                      <label>默认关注点（可留空）
+                        <textarea value={currentRole.defaultPreference} placeholder="留空时仅按所选偏好方案和联系人补充生成" onChange={(event) => setRoles((items) => items.map((item) => item.key === currentRole.key ? { ...item, defaultPreference: event.target.value } : item))} />
+                      </label>
+                      <div className="role-editor-actions">
+                        <button onClick={() => saveRole(currentRole)}><Save size={17} />保存角色</button>
+                        <button className="danger-action" onClick={() => deleteRole(currentRole)} disabled={currentRole.usageCount > 0}><Trash2 size={17} />删除角色</button>
+                      </div>
+                    </>
+                  )}
+                  {currentRole.templatePreference && (
+                    <div className="role-template">
+                      <strong>AI 编程角色专用模板</strong>
+                      <pre>{currentRole.templatePreference}</pre>
+                    </div>
+                  )}
+                  <div className="preference-set-section">
+                    <div className="preference-set-heading">
+                      <strong>偏好方案</strong>
+                      <span>联系人可从中单选</span>
+                    </div>
+                    {currentRole.preferenceSets.length === 0 ? (
+                      <p className="muted-copy">还没有偏好方案。新增后可分配给多个联系人。</p>
+                    ) : (
+                      <div className="preference-set-list">
+                        {currentRole.preferenceSets.map((set, index) => (
+                          <div key={set.id} className="preference-set-item">
+                            <div className="preference-set-fields">
+                              <input aria-label={`${set.name} 偏好方案名称`} value={set.name} onChange={(event) => setRoles((items) => items.map((role) => role.key === currentRole.key ? { ...role, preferenceSets: role.preferenceSets.map((item) => item.id === set.id ? { ...item, name: event.target.value } : item) } : role))} />
+                              <textarea aria-label={`${set.name} 偏好方案内容`} value={set.content} onChange={(event) => setRoles((items) => items.map((role) => role.key === currentRole.key ? { ...role, preferenceSets: role.preferenceSets.map((item) => item.id === set.id ? { ...item, content: event.target.value } : item) } : role))} />
+                            </div>
+                            <div className="preference-set-actions">
+                              <button onClick={() => savePreferenceSet(set.id, set.name, set.content)}>保存</button>
+                              <button disabled={index === 0} onClick={() => movePreferenceSet(currentRole, index, -1)}>上移</button>
+                              <button disabled={index === currentRole.preferenceSets.length - 1} onClick={() => movePreferenceSet(currentRole, index, 1)}>下移</button>
+                              <button className="icon-button danger" title="删除偏好方案" disabled={set.usageCount > 0} onClick={() => deletePreferenceSet(currentRole, set.id)}><Trash2 size={16} /></button>
+                            </div>
+                            <small>{set.usageCount ? `${set.usageCount} 位联系人正在使用` : '未被联系人使用'}</small>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div className="new-preference-set-form">
+                      <input aria-label="偏好方案名称" value={preferenceSetName} placeholder="偏好方案名称，例如：简洁汇报" onChange={(event) => setPreferenceSetName(event.target.value)} />
+                      <textarea aria-label="偏好方案内容" value={preferenceSetContent} placeholder="例如：先给结论，使用口语化表达，并明确列出风险。" onChange={(event) => setPreferenceSetContent(event.target.value)} />
+                      <button onClick={() => createPreferenceSet(currentRole)}><Plus size={17} />新增偏好方案</button>
+                    </div>
+                  </div>
+                </div>
+              ) : <div className="empty-state compact">请先选择或新增一个角色模板。</div>}
+            </div>
+          </div>
         </AceternityCard>
 
         <AceternityCard className="panel action-panel">
@@ -741,7 +925,7 @@ export function App() {
           </div>
           <button className="primary" disabled={!canGenerate} onClick={generate}>
             {busy === 'generate' ? <Loader2 className="spin" size={18} /> : <Sparkles size={18} />}
-            {dirtyRoleCount ? `保存偏好并生成 ${dirtyRoleCount}` : '面向角色生成'}
+            面向角色生成
           </button>
           <button disabled={!selectedDraftCount || busy === 'send'} onClick={sendSelected}>
             {busy === 'send' ? <Loader2 className="spin" size={18} /> : <Send size={18} />}

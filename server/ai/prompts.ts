@@ -11,10 +11,12 @@ export const systemPrompt = `你是 Interchange，一个面向 AI 编程团队�
 6. 不要在正文中解释或原样复述“推荐提示词模板”或“用户自定义补充”字段，除非字段明确要求输出某段文字。
 7. 如果角色是 AI 编程软件，把推荐提示词模板和用户自定义补充理解为给下游 AI 的开发提示词，用它们调整任务拆分、实现边界、验收标准和下一步行动。
 8. 用户自定义补充优先于推荐提示词模板、角色默认关注点和收件人补充偏好；但事实约束最高，不能因此改变事实。
-9. 输出可以直接发送给收件人的内容，不解释你的思考过程。
-10. 风格清晰、克制、专业，避免空话。`;
+9. 当角色默认关注点标记为“无固定习惯”时，不要套用任何岗位假设；只依据用户自定义补充、收件人补充偏好和客观信息生成。
+10. 输出可以直接发送给收件人的内容，不解释你的思考过程。
+11. 风格清晰、克制、专业，避免空话。`;
 
 export function buildDraftMessages({ sourceText, contact, role }: DraftRequest): DraftMessage[] {
+  const defaultPreference = role.defaultPreference.trim() || '无固定习惯。';
   const templatePreference = role.templatePreference.trim() || '无内置模板。';
   const customPreference = role.customPreference.trim() || '无额外要求。';
   const contactPreference = contact.preference.trim() || '无额外要求。';
@@ -26,7 +28,7 @@ export function buildDraftMessages({ sourceText, contact, role }: DraftRequest):
       content: [
         `收件人：${contact.name}`,
         `角色：${role.label}`,
-        `角色默认关注点：${role.defaultPreference}`,
+        `角色默认关注点：${defaultPreference}`,
         `推荐提示词模板：${templatePreference}`,
         `用户自定义补充：${customPreference}`,
         `收件人补充偏好：${contactPreference}`,

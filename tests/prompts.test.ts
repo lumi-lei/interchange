@@ -35,6 +35,29 @@ describe('draft prompts', () => {
     expect(messages[0].content).toContain('事实约束最高');
     expect(messages[1].content).toContain('请严格按推荐提示词模板和用户自定义补充改写成一份适合该收件人的消息');
   });
+
+  it('marks contact-only roles as having no fixed habit and uses their custom preference', () => {
+    const request = sampleDraftRequest();
+    request.contact.roleMode = 'custom';
+    request.contact.roleKey = '';
+    request.contact.customRoleLabel = '项目赞助人';
+    request.contact.customRolePreference = '只汇报业务结论、风险与待决事项。';
+    request.role = {
+      ...request.role,
+      key: 'contact_custom_1',
+      label: request.contact.customRoleLabel,
+      defaultPreference: '',
+      templatePreference: '',
+      customPreference: request.contact.customRolePreference,
+      isBuiltin: false,
+    };
+
+    const messages = buildDraftMessages(request);
+    expect(messages[0].content).toContain('无固定习惯');
+    expect(messages[1].content).toContain('角色：项目赞助人');
+    expect(messages[1].content).toContain('角色默认关注点：无固定习惯。');
+    expect(messages[1].content).toContain('用户自定义补充：只汇报业务结论、风险与待决事项。');
+  });
 });
 
 function sampleDraftRequest(): DraftRequest {
@@ -44,6 +67,10 @@ function sampleDraftRequest(): DraftRequest {
       id: 1,
       name: 'AI',
       roleKey: 'my_ai_coding_tool',
+      roleMode: 'template',
+      rolePreferenceId: null,
+      customRoleLabel: '',
+      customRolePreference: '',
       deliveryType: 'generic_webhook',
       webhookUrl: '',
       dingtalkSecret: '',
@@ -59,6 +86,9 @@ function sampleDraftRequest(): DraftRequest {
       defaultPreference: '默认偏好：先给结论。',
       templatePreference: '模板偏好：输出可执行任务。',
       customPreference: '自定义偏好：补充风险。',
+      isBuiltin: true,
+      usageCount: 0,
+      preferenceSets: [],
       updatedAt: '',
     },
   };

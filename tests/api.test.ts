@@ -24,6 +24,10 @@ const sampleDraftRequest: DraftRequest = {
     id: 1,
     name: 'AI',
     roleKey: 'my_ai_coding_tool',
+    roleMode: 'template',
+    rolePreferenceId: null,
+    customRoleLabel: '',
+    customRolePreference: '',
     deliveryType: 'generic_webhook',
     webhookUrl: '',
     dingtalkSecret: '',
@@ -39,6 +43,9 @@ const sampleDraftRequest: DraftRequest = {
     defaultPreference: '偏好直接给出实现要点。',
     templatePreference: '模板偏好。',
     customPreference: '',
+    isBuiltin: true,
+    usageCount: 0,
+    preferenceSets: [],
     updatedAt: '',
   },
 };
@@ -255,6 +262,51 @@ describe('Interchange API', () => {
     expect(teammateAiRole.templatePreference).toContain('OpenSpec');
     expect(teammateAiRole.templatePreference).toContain('协作边界');
     expect(teammateAiRole.templatePreference).not.toBe(teammateAiRole.customPreference);
+  });
+
+  it('manages custom roles and preference sets while protecting active associations', async () => {
+    const app = createApp();
+    const role = await request(app)
+      .post('/api/roles')
+      .send({ label: '售前顾问', defaultPreference: '关注客户顾虑与下一步。' })
+      .expect(201);
+
+    expect(role.body.isBuiltin).toBe(false);
+    const preferenceSet = await request(app)
+      .post(`/api/roles/${role.body.key}/preference-sets`)
+      .send({ name: '简洁版', content: '先给结论，再给两项行动。', sortOrder: 0 })
+      .expect(201);
+
+    const contact = await request(app)
+      .post('/api/contacts')
+      .send({ name: '售前同学', roleKey: role.body.key, rolePreferenceId: preferenceSet.body.id, webhookUrl: '' })
+      .expect(201);
+
+    expect(contact.body.rolePreferenceId).toBe(preferenceSet.body.id);
+    await request(app).delete(`/api/preference-sets/${preferenceSet.body.id}`).expect(409);
+    await request(app).delete(`/api/roles/${role.body.key}`).expect(409);
+
+    const custom = await request(app)
+      .put(`/api/contacts/${contact.body.id}`)
+      .send({
+        roleMode: 'custom',
+        roleKey: '',
+        rolePreferenceId: null,
+        customRoleLabel: '项目赞助人',
+        customRolePreference: '只要业务结论、风险和待决事项。',
+      })
+      .expect(200);
+
+    expect(custom.body.roleMode).toBe('custom');
+    await request(app).delete(`/api/preference-sets/${preferenceSet.body.id}`).expect(204);
+    await request(app).delete(`/api/roles/${role.body.key}`).expect(204);
+  });
+
+  it('rejects incomplete contact-only role settings', async () => {
+    await request(createApp())
+      .post('/api/contacts')
+      .send({ name: '缺少偏好的专属角色', roleMode: 'custom', customRoleLabel: '临时角色' })
+      .expect(400);
   });
 
   it('disables external vision and file model providers by default', () => {

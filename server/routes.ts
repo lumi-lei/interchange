@@ -2,13 +2,12 @@ import express from 'express';
 import multer from 'multer';
 import { z } from 'zod';
 import { config } from './config.js';
-import { repo, toPublicContact } from './db.js';
+import { repo, toPublicContact, type Contact } from './db.js';
 import { buildDeliveryRequest } from './delivery.js';
 import { generateDraft } from './ai/modelRouter.js';
 import { assertExternalFileModelAllowed, externalModelKindForSource } from './ai/compliance.js';
 import { parseUploadedFile } from './parser.js';
 import { aiRateLimit } from './rateLimit.js';
-import { isRoleKey, type RoleKey } from './roles.js';
 
 const router = express.Router();
 const upload = multer({
@@ -17,13 +16,16 @@ const upload = multer({
   defParamCharset: 'utf8',
 });
 
-const roleKeySchema = z.string().refine(isRoleKey, 'Invalid role key');
 const deliveryTypeSchema = z.enum(['generic_webhook', 'dingtalk_robot']);
 const contactIdsSchema = z.array(z.number().int().positive()).min(1).max(500).transform((ids) => [...new Set(ids)]);
 
 const contactSchema = z.object({
   name: z.string().min(1),
-  roleKey: roleKeySchema,
+  roleMode: z.enum(['template', 'custom']).default('template'),
+  roleKey: z.string().default(''),
+  rolePreferenceId: z.number().int().positive().nullable().optional(),
+  customRoleLabel: z.string().default(''),
+  customRolePreference: z.string().default(''),
   deliveryType: deliveryTypeSchema.default('generic_webhook'),
   webhookUrl: z.string().default(''),
   dingtalkSecret: z.string().optional(),
@@ -32,6 +34,38 @@ const contactSchema = z.object({
   preference: z.string().default(''),
   active: z.boolean().optional(),
 });
+
+const contactUpdateSchema = z.object({
+  name: z.string().min(1).optional(),
+  roleMode: z.enum(['template', 'custom']).optional(),
+  roleKey: z.string().optional(),
+  rolePreferenceId: z.number().int().positive().nullable().optional(),
+  customRoleLabel: z.string().optional(),
+  customRolePreference: z.string().optional(),
+  deliveryType: deliveryTypeSchema.optional(),
+  webhookUrl: z.string().optional(),
+  dingtalkSecret: z.string().optional(),
+  dingtalkKeyword: z.string().optional(),
+  clearDingtalkSecret: z.boolean().optional(),
+  preference: z.string().optional(),
+  active: z.boolean().optional(),
+});
+
+const roleSchema = z.object({
+  label: z.string().trim().min(1),
+  defaultPreference: z.string().default(''),
+});
+
+const preferenceSetSchema = z.object({
+  name: z.string().trim().min(1),
+  content: z.string().trim().min(1),
+  sortOrder: z.number().int().optional(),
+});
+
+async function validateContactConfiguration(contact: Pick<Contact, 'roleMode' | 'roleKey' | 'rolePreferenceId' | 'customRoleLabel' | 'customRolePreference'>) {
+  const error = await repo.validateContactConfiguration(contact);
+  if (error) throw Object.assign(new Error(error), { status: 400 });
+}
 
 router.get('/health', (_req, res) => {
   res.json({
@@ -45,10 +79,39 @@ router.get('/roles', async (_req, res) => {
   res.json(await repo.roles());
 });
 
+router.post('/roles', async (req, res) => {
+  const body = roleSchema.parse(req.body);
+  res.status(201).json(await repo.createRole(body));
+});
+
 router.put('/roles/:key', async (req, res) => {
-  const key = roleKeySchema.parse(req.params.key) as RoleKey;
   const body = z.object({ customPreference: z.string().default('') }).parse(req.body);
-  res.json(await repo.updateRole(key, body.customPreference));
+  res.json(await repo.updateRole(req.params.key, body));
+});
+
+router.patch('/roles/:key', async (req, res) => {
+  const body = roleSchema.partial().parse(req.body);
+  res.json(await repo.updateRole(req.params.key, body));
+});
+
+router.delete('/roles/:key', async (req, res) => {
+  await repo.deleteRole(req.params.key);
+  res.status(204).send();
+});
+
+router.post('/roles/:key/preference-sets', async (req, res) => {
+  const body = preferenceSetSchema.parse(req.body);
+  res.status(201).json(await repo.createPreferenceSet(req.params.key, body));
+});
+
+router.patch('/preference-sets/:id', async (req, res) => {
+  const body = preferenceSetSchema.partial().parse(req.body);
+  res.json(await repo.updatePreferenceSet(Number(req.params.id), body));
+});
+
+router.delete('/preference-sets/:id', async (req, res) => {
+  await repo.deletePreferenceSet(Number(req.params.id));
+  res.status(204).send();
 });
 
 router.get('/contacts', async (_req, res) => {
@@ -57,13 +120,17 @@ router.get('/contacts', async (_req, res) => {
 
 router.post('/contacts', async (req, res) => {
   const body = contactSchema.parse(req.body);
+  await validateContactConfiguration({ ...body, rolePreferenceId: body.rolePreferenceId ?? null });
   const created = await repo.createContact(body as any);
   res.status(201).json(created ? toPublicContact(created) : null);
 });
 
 router.put('/contacts/:id', async (req, res) => {
   const id = Number(req.params.id);
-  const body = contactSchema.partial().parse(req.body);
+  const body = contactUpdateSchema.parse(req.body);
+  const existing = await repo.contact(id);
+  if (!existing) return res.status(404).json({ error: 'Contact not found' });
+  await validateContactConfiguration({ ...existing, ...body });
   const updated = await repo.updateContact(id, body as any);
   if (!updated) return res.status(404).json({ error: 'Contact not found' });
   res.json(toPublicContact(updated));
@@ -113,19 +180,20 @@ router.post('/generate', aiRateLimit, async (req, res) => {
     contactIds: z.array(z.number()).min(1),
   }).parse(req.body);
 
-  const roles = new Map((await repo.roles()).map((role) => [role.key, role]));
   const drafts = [];
 
   for (const contactId of body.contactIds) {
     const contact = await repo.contact(contactId);
     if (!contact || !contact.active) continue;
-    const role = roles.get(contact.roleKey);
-    if (!role) continue;
+    const role = await repo.resolveRoleForContact(contact);
+    if (!role) {
+      return res.status(400).json({ error: `联系人“${contact.name}”引用的角色或偏好方案不存在，请重新配置。` });
+    }
     const content = await generateDraft({ sourceText: body.sourceText, contact, role });
     const generationRecordId = await repo.createGenerationRecord(
       body.inputRecordId ?? null,
       contact.id,
-      contact.roleKey,
+      role.key,
       content,
     );
     drafts.push({ generationRecordId, contact: toPublicContact(contact), role, content });
