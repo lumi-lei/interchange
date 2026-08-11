@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { buildDraftMessages } from '../server/ai/prompts.js';
+import { buildDraftMessages, buildRoleSuggestionMessages } from '../server/ai/prompts.js';
 import type { DraftRequest, TextModelProvider } from '../server/ai/types.js';
 
 const createMock = vi.fn();
@@ -108,6 +108,26 @@ describe('DeepSeek provider', () => {
       createMock.mockResolvedValueOnce({ choices: [{ message: {} }] });
 
       await expect(deepSeekProvider.generateDraft(sampleDraftRequest())).resolves.toEqual({ content: '' });
+    } finally {
+      config.deepseekApiKey = originalApiKey;
+    }
+  });
+
+  it('generates a role configuration suggestion through the same DeepSeek client', async () => {
+    const { config } = await import('../server/config.js');
+    const { deepSeekProvider } = await import('../server/ai/providers/deepseek.js');
+    const originalApiKey = config.deepseekApiKey;
+
+    try {
+      config.deepseekApiKey = 'test-deepseek-key';
+      createMock.mockResolvedValueOnce({ choices: [{ message: { content: '  关注任务目标、约束和验收标准。  ' } }] });
+
+      await expect(deepSeekProvider.generateRoleSuggestion({ roleLabel: '豆包' })).resolves.toEqual({
+        content: '关注任务目标、约束和验收标准。',
+      });
+      expect(createMock).toHaveBeenCalledWith(expect.objectContaining({
+        messages: buildRoleSuggestionMessages({ roleLabel: '豆包' }),
+      }));
     } finally {
       config.deepseekApiKey = originalApiKey;
     }

@@ -54,6 +54,11 @@ export type ParsedInput = {
   markdownFilename?: string;
 };
 
+export type RoleSuggestionInput = {
+  roleLabel: string;
+  preferenceSetName?: string;
+};
+
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const response = await fetch(url, options);
   const text = await response.text();
@@ -70,6 +75,9 @@ export const api = {
   }),
   updateRole: (key: string, role: Partial<Pick<Role, 'label' | 'defaultPreference'>>) => request<Role>(`/api/roles/${key}`, {
     method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(role),
+  }),
+  generateRoleSuggestion: (input: RoleSuggestionInput) => request<{ content: string }>('/api/role-suggestions', {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(input),
   }),
   deleteRole: (key: string) => request<void>(`/api/roles/${key}`, { method: 'DELETE' }),
   createPreferenceSet: (roleKey: string, preferenceSet: Pick<PreferenceSet, 'name' | 'content' | 'sortOrder'>) =>

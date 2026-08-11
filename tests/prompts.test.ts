@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildDraftMessages } from '../server/ai/prompts.js';
+import { buildDraftMessages, buildRoleSuggestionMessages } from '../server/ai/prompts.js';
 import type { DraftRequest } from '../server/ai/types.js';
 
 describe('draft prompts', () => {
@@ -57,6 +57,22 @@ describe('draft prompts', () => {
     expect(messages[1].content).toContain('角色：项目赞助人');
     expect(messages[1].content).toContain('角色默认关注点：无固定习惯。');
     expect(messages[1].content).toContain('用户自定义补充：只汇报业务结论、风险与待决事项。');
+  });
+
+  it('builds a focused prompt for a role default preference suggestion', () => {
+    const messages = buildRoleSuggestionMessages({ roleLabel: '豆包' });
+
+    expect(messages[0].content).toContain('只输出建议正文');
+    expect(messages[1].content).toContain('角色名称：豆包');
+    expect(messages[1].content).toContain('默认关注点');
+  });
+
+  it('builds a focused prompt for a preference set suggestion', () => {
+    const messages = buildRoleSuggestionMessages({ roleLabel: '豆包', preferenceSetName: '严肃点' });
+
+    expect(messages[1].content).toContain('角色名称：豆包');
+    expect(messages[1].content).toContain('偏好方案名称：严肃点');
+    expect(messages[1].content).toContain('语气、结构、信息取舍和注意事项');
   });
 });
 

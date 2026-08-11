@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { config } from './config.js';
 import { repo, toPublicContact, type Contact } from './db.js';
 import { buildDeliveryRequest } from './delivery.js';
-import { generateDraft } from './ai/modelRouter.js';
+import { generateDraft, generateRoleSuggestion } from './ai/modelRouter.js';
 import { assertExternalFileModelAllowed, externalModelKindForSource } from './ai/compliance.js';
 import { parseUploadedFile } from './parser.js';
 import { aiRateLimit } from './rateLimit.js';
@@ -62,6 +62,11 @@ const preferenceSetSchema = z.object({
   sortOrder: z.number().int().optional(),
 });
 
+const roleSuggestionSchema = z.object({
+  roleLabel: z.string().trim().min(1).max(80),
+  preferenceSetName: z.string().trim().min(1).max(80).optional(),
+});
+
 async function validateContactConfiguration(contact: Pick<Contact, 'roleMode' | 'roleKey' | 'rolePreferenceId' | 'customRoleLabel' | 'customRolePreference'>) {
   const error = await repo.validateContactConfiguration(contact);
   if (error) throw Object.assign(new Error(error), { status: 400 });
@@ -77,6 +82,15 @@ router.get('/health', (_req, res) => {
 
 router.get('/roles', async (_req, res) => {
   res.json(await repo.roles());
+});
+
+router.post('/role-suggestions', aiRateLimit, async (req, res) => {
+  const body = roleSuggestionSchema.parse(req.body);
+  const content = await generateRoleSuggestion(body);
+  if (!content) {
+    throw Object.assign(new Error('模型未返回角色配置建议，请稍后重试。'), { status: 502 });
+  }
+  res.json({ content });
 });
 
 router.post('/roles', async (req, res) => {

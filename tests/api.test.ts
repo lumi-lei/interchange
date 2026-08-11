@@ -463,6 +463,20 @@ describe('Interchange API', () => {
     }
   });
 
+  it('generates a role configuration suggestion without saving it', async () => {
+    const suggestionSpy = vi.spyOn(deepSeekProvider, 'generateRoleSuggestion').mockResolvedValueOnce({
+      content: '关注任务目标、约束条件、风险和验收标准。',
+    });
+
+    const response = await request(createApp())
+      .post('/api/role-suggestions')
+      .send({ roleLabel: '豆包', preferenceSetName: '严肃点' })
+      .expect(200);
+
+    expect(response.body).toEqual({ content: '关注任务目标、约束条件、风险和验收标准。' });
+    expect(suggestionSpy).toHaveBeenCalledWith({ roleLabel: '豆包', preferenceSetName: '严肃点' });
+  });
+
   it('rate limits generation requests before calling the model provider', async () => {
     const originalApiKey = config.deepseekApiKey;
     const originalAiLimit = config.aiRateLimitMax;

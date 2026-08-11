@@ -343,6 +343,53 @@ export function App() {
     }
   }
 
+  async function generateRoleSuggestion(
+    roleLabel: string,
+    preferenceSetName: string | undefined,
+    applySuggestion: (content: string) => void,
+  ) {
+    if (!roleLabel.trim()) {
+      setError('请先填写角色名称');
+      return;
+    }
+    if (preferenceSetName !== undefined && !preferenceSetName.trim()) {
+      setError('请先填写偏好方案名称');
+      return;
+    }
+
+    setBusy('role-suggestion');
+    setError('');
+    try {
+      const { content } = await api.generateRoleSuggestion({
+        roleLabel,
+        ...(preferenceSetName !== undefined ? { preferenceSetName } : {}),
+      });
+      applySuggestion(content);
+      setStatus(preferenceSetName !== undefined ? '已生成偏好方案内容建议，请确认后保存' : '已生成默认关注点建议，请确认后保存');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy('');
+    }
+  }
+
+  function generateNewRoleDefaultPreference() {
+    if (newRoleDefaultPreference.trim() && !window.confirm('生成的建议将覆盖当前默认关注点，是否继续？')) return;
+    void generateRoleSuggestion(newRoleLabel, undefined, setNewRoleDefaultPreference);
+  }
+
+  function generateCurrentRoleDefaultPreference(role: Role) {
+    if (role.defaultPreference.trim() && !window.confirm('生成的建议将覆盖当前默认关注点，是否继续？')) return;
+    void generateRoleSuggestion(role.label, undefined, (content) => {
+      setRoles((items) => items.map((item) => (item.key === role.key ? { ...item, defaultPreference: content } : item)));
+    });
+  }
+
+  function generatePreferenceSetContent(role: Role, name: string, currentContent: string, applySuggestion: (content: string) => void) {
+    if (currentContent.trim() && !window.confirm('生成的建议将覆盖当前偏好方案内容，是否继续？')) return;
+    void generateRoleSuggestion(role.label, name, applySuggestion);
+  }
+
   async function deleteRole(role: Role) {
     if (!window.confirm(`确定删除“${role.label}”吗？`)) return;
     try {
@@ -844,6 +891,7 @@ export function App() {
               <div className="new-role-form">
                 <input aria-label="自定义角色名称" value={newRoleLabel} placeholder="新增自定义角色名称" onChange={(event) => setNewRoleLabel(event.target.value)} />
                 <input aria-label="自定义角色默认关注点" value={newRoleDefaultPreference} placeholder="可选：默认关注点" onChange={(event) => setNewRoleDefaultPreference(event.target.value)} />
+                <button onClick={generateNewRoleDefaultPreference} disabled={busy === 'role-suggestion' || !newRoleLabel.trim()}><Sparkles size={17} />AI 生成关注点</button>
                 <button onClick={createRole} disabled={busy === 'role'}><Plus size={17} />新增角色</button>
               </div>
               {currentRole ? (
@@ -863,6 +911,7 @@ export function App() {
                         <textarea value={currentRole.defaultPreference} placeholder="留空时仅按所选偏好方案和联系人补充生成" onChange={(event) => setRoles((items) => items.map((item) => item.key === currentRole.key ? { ...item, defaultPreference: event.target.value } : item))} />
                       </label>
                       <div className="role-editor-actions">
+                        <button onClick={() => generateCurrentRoleDefaultPreference(currentRole)} disabled={busy === 'role-suggestion'}><Sparkles size={17} />AI 生成关注点</button>
                         <button onClick={() => saveRole(currentRole)}><Save size={17} />保存角色</button>
                         <button className="danger-action" onClick={() => deleteRole(currentRole)} disabled={currentRole.usageCount > 0}><Trash2 size={17} />删除角色</button>
                       </div>
@@ -890,6 +939,7 @@ export function App() {
                               <textarea aria-label={`${set.name} 偏好方案内容`} value={set.content} onChange={(event) => setRoles((items) => items.map((role) => role.key === currentRole.key ? { ...role, preferenceSets: role.preferenceSets.map((item) => item.id === set.id ? { ...item, content: event.target.value } : item) } : role))} />
                             </div>
                             <div className="preference-set-actions">
+                              <button onClick={() => generatePreferenceSetContent(currentRole, set.name, set.content, (content) => setRoles((items) => items.map((role) => role.key === currentRole.key ? { ...role, preferenceSets: role.preferenceSets.map((item) => item.id === set.id ? { ...item, content } : item) } : role)))} disabled={busy === 'role-suggestion'}>AI 生成</button>
                               <button onClick={() => savePreferenceSet(set.id, set.name, set.content)}>保存</button>
                               <button disabled={index === 0} onClick={() => movePreferenceSet(currentRole, index, -1)}>上移</button>
                               <button disabled={index === currentRole.preferenceSets.length - 1} onClick={() => movePreferenceSet(currentRole, index, 1)}>下移</button>
@@ -903,6 +953,7 @@ export function App() {
                     <div className="new-preference-set-form">
                       <input aria-label="偏好方案名称" value={preferenceSetName} placeholder="偏好方案名称，例如：简洁汇报" onChange={(event) => setPreferenceSetName(event.target.value)} />
                       <textarea aria-label="偏好方案内容" value={preferenceSetContent} placeholder="例如：先给结论，使用口语化表达，并明确列出风险。" onChange={(event) => setPreferenceSetContent(event.target.value)} />
+                      <button onClick={() => generatePreferenceSetContent(currentRole, preferenceSetName, preferenceSetContent, setPreferenceSetContent)} disabled={busy === 'role-suggestion' || !preferenceSetName.trim()}><Sparkles size={17} />AI 生成内容</button>
                       <button onClick={() => createPreferenceSet(currentRole)}><Plus size={17} />新增偏好方案</button>
                     </div>
                   </div>

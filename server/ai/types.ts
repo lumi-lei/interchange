@@ -10,6 +10,11 @@ export type DraftResponse = {
   content: string;
 };
 
+export type RoleSuggestionRequest = {
+  roleLabel: string;
+  preferenceSetName?: string;
+};
+
 export type DraftMessage = {
   role: 'system' | 'user';
   content: string;
@@ -17,4 +22,5 @@ export type DraftMessage = {
 
 export type TextModelProvider = {
   generateDraft(input: DraftRequest): Promise<DraftResponse>;
+  generateRoleSuggestion(input: RoleSuggestionRequest): Promise<DraftResponse>;
 };

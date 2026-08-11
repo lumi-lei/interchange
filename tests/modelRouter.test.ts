@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { config, type TextModelProviderName } from '../server/config.js';
-import { generateDraft, resolveTextProvider } from '../server/ai/modelRouter.js';
+import { generateDraft, generateRoleSuggestion, resolveTextProvider } from '../server/ai/modelRouter.js';
 import { deepSeekProvider } from '../server/ai/providers/deepseek.js';
 import type { DraftRequest } from '../server/ai/types.js';
 
@@ -47,6 +47,14 @@ describe('model router', () => {
       status: 503,
       message: 'Unsupported TEXT_MODEL_PROVIDER "unknown-provider". Supported providers: deepseek.',
     });
+  });
+
+  it('generates role suggestions through the resolved text provider', async () => {
+    config.textModelProvider = 'deepseek';
+    const providerSpy = vi.spyOn(deepSeekProvider, 'generateRoleSuggestion').mockResolvedValueOnce({ content: '建议内容' });
+
+    await expect(generateRoleSuggestion({ roleLabel: '豆包', preferenceSetName: '严肃点' })).resolves.toBe('建议内容');
+    expect(providerSpy).toHaveBeenCalledWith({ roleLabel: '豆包', preferenceSetName: '严肃点' });
   });
 });
 
