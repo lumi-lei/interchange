@@ -15,22 +15,31 @@ The browser never receives `DEEPSEEK_API_KEY`. All AI calls are made by the Expr
 
 ## Product Flow
 
-1. Maintain recipients and assign each one a built-in role.
-2. Input source information by typing text or uploading a file.
-3. Parse uploaded files into editable text.
-4. Select recipients.
-5. Generate role-specific message drafts through DeepSeek.
-6. Review and edit each draft.
-7. Confirm and send selected drafts through the selected contact delivery channel.
-8. Review send records and retry failures if needed.
+1. Input objective facts by typing text or uploading a file.
+2. Parse uploaded files into editable text.
+3. Select recipients, or configure a reusable custom role, its focus areas, preference set, and any recipient-specific preference.
+4. Generate role-specific, reviewable drafts through DeepSeek.
+5. Review and edit the drafts; use them to support a human decision or confirm selected drafts for delivery.
+6. Send only user-confirmed drafts through the configured delivery channel.
+7. Review send records and retry failures if needed.
+
+The application assists people in identifying relevant information, risks, open questions, and next actions. It does not automatically determine or execute a management decision.
 
 ## API Design
 
 - `GET /api/health`: check service status and DeepSeek configuration.
-- `GET /api/roles`: list role definitions and current custom preferences.
+- `GET /api/roles`: list built-in and custom role definitions, preferences, and preference sets.
+- `GET /api/role-profiles`: list role-profile presets used when creating or suggesting a role configuration.
+- `POST /api/roles`: create a reusable custom role.
 - `PUT /api/roles/:key`: update a role custom preference.
+- `PATCH /api/roles/:key`: update a reusable custom role and its profile details.
+- `DELETE /api/roles/:key`: delete an unused custom role.
+- `POST /api/roles/:key/preference-sets`: create a reusable preference set for a role.
+- `PATCH /api/preference-sets/:id`: update a preference set.
+- `DELETE /api/preference-sets/:id`: delete a preference set.
+- `POST /api/role-suggestions`: generate an editable focus-area or preference-set suggestion for a role.
 - `GET /api/contacts`: list recipients.
-- `POST /api/contacts`: create a recipient.
+- `POST /api/contacts`: create a recipient with a role or recipient-specific role.
 - `PUT /api/contacts/:id`: update a recipient.
 - `DELETE /api/contacts/:id`: delete a recipient.
 - `POST /api/inputs/parse`: parse text or uploaded files into normalized text.
@@ -40,8 +49,8 @@ The browser never receives `DEEPSEEK_API_KEY`. All AI calls are made by the Expr
 
 ## Data Model
 
-- `roles`: built-in role key, label, default preference, custom preference.
-- `contacts`: name, role key, delivery type, webhook URL, optional DingTalk robot secret and safety keyword, custom preference, active flag.
+- `roles`: built-in or custom role key, label, default focus/preference, optional role-profile metadata, and reusable preference sets.
+- `contacts`: name, selected role or recipient-specific role, selected preference set, recipient-specific preference, delivery type, webhook URL, optional DingTalk robot secret and safety keyword, and active flag.
 - `input_records`: source type, original filename, normalized text, created time.
 - `generation_records`: input record, contact, role key, draft content, status.
 - `send_records`: generation record, delivery type, webhook URL, payload, response status, error, created time.
@@ -53,17 +62,20 @@ The browser never receives `DEEPSEEK_API_KEY`. All AI calls are made by the Expr
 - DingTalk robot signing is optional per contact. When a secret is configured, the server appends `timestamp` and `sign` query parameters, where `sign` is HmacSHA256 over `timestamp + "\n" + secret`, Base64 encoded.
 - DingTalk safety keywords are optional per contact. If configured and absent from the confirmed draft, the server prefixes the keyword before sending to avoid DingTalk keyword-security rejection.
 - DingTalk secrets are stored server-side only. Contact APIs return `dingtalkSecretConfigured: boolean` and never return the secret value.
+- No generated message is delivered until the user has reviewed and explicitly confirmed it.
 
 ## AI Prompting
 
 The server builds a structured prompt with:
 
 - Objective source information.
-- Recipient role and role preference.
+- Recipient role, default focus, and reusable preference set.
 - Recipient-specific preference.
-- Requirements to preserve facts, avoid inventing commitments, and output immediately usable Chinese content.
+- Requirements to preserve facts, avoid inventing commitments or conclusions, surface unknowns for confirmation, and output immediately usable Chinese content.
 
 The default model is `deepseek-v4-flash`. `DEEPSEEK_MODEL` can override it, and `deepseek-v4-pro` can be used when higher reasoning quality is needed.
+
+The current API produces editable role-specific drafts. A future general decision-support experience may add a more structured, reviewable presentation of priorities, risks, open questions, and alternative actions. It must retain the fact-preservation and human-confirmation boundaries; it is not part of the current API contract.
 
 ## External Model and File Compliance Boundary
 
@@ -83,13 +95,6 @@ If local parsing returns no text, the API returns a readable 422 error explainin
 - Excel: use `read-excel-file` for `.xlsx` buffers and direct UTF-8 decoding for `.csv`.
 - Images: use Tesseract.js worker OCR and return editable text.
 
-## Agent Skill
+## Specialist AI Development Workflow
 
-After the web app is implemented, a project-local skill is added under `agent-skills/interchange-message-router`. It instructs other AI agents to:
-
-- Gather objective information.
-- Call the local Interchange API.
-- Review generated role-specific messages.
-- Trigger send only after explicit user confirmation.
-
-The skill reuses the web backend and does not duplicate business logic.
+The AI development workflow remains a specialist capability. The project-local Agent Skill under `agent-skills/interchange-message-router` and the portable `agent-skills-v2` package support AI coding contexts, human confirmation, webhook delivery, and an OpenSpec-like `explore -> propose -> context -> apply -> archive` workflow. These workflows remain development-specific and do not imply equivalent general-user automation.
