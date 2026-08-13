@@ -1,8 +1,8 @@
-import { createClient, type InStatement, type Row } from '@libsql/client';
+import { createClient, type Row } from '@libsql/client';
 import { randomUUID } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { config } from './config.js';
-import { isBuiltinRoleKey, roleDefinitions, roleTemplatePreference, type RoleKey } from './roles.js';
+import { legacyBuiltinRoleKeys, type RoleKey } from './roles.js';
 
 export type DeliveryType = 'generic_webhook' | 'dingtalk_robot';
 export type RoleMode = 'template' | 'custom';
@@ -62,11 +62,9 @@ export type RoleRow = {
   key: RoleKey;
   label: string;
   defaultPreference: string;
-  templatePreference: string;
   customPreference: string;
   roleProfileKey: string;
   roleProfileDescription: string;
-  isBuiltin: boolean;
   usageCount: number;
   preferenceSets: PreferenceSet[];
   updatedAt: string;
@@ -110,6 +108,24 @@ async function ensureColumn(tableName: string, columnName: string, definition: s
 
 let migrationPromise: Promise<void> | undefined;
 
+export async function removeLegacyBuiltinRoles() {
+  const legacyMigrationKey = 'remove_legacy_builtin_roles_v1';
+  const migrationResult = await db.execute({ sql: 'SELECT key FROM app_migrations WHERE key = ?', args: [legacyMigrationKey] });
+  if (migrationResult.rows.length) return;
+
+  const placeholders = legacyBuiltinRoleKeys.map(() => '?').join(', ');
+  await db.execute({
+    sql: `DELETE FROM contacts WHERE role_mode = 'template' AND role_key IN (${placeholders})`,
+    args: [...legacyBuiltinRoleKeys],
+  });
+  await db.execute({
+    sql: `DELETE FROM role_preference_sets WHERE role_key IN (${placeholders})`,
+    args: [...legacyBuiltinRoleKeys],
+  });
+  await db.execute({ sql: `DELETE FROM roles WHERE key IN (${placeholders})`, args: [...legacyBuiltinRoleKeys] });
+  await db.execute({ sql: 'INSERT INTO app_migrations (key, applied_at) VALUES (?, ?)', args: [legacyMigrationKey, now()] });
+}
+
 async function runMigrations() {
   await db.executeMultiple(`
     CREATE TABLE IF NOT EXISTS roles (
@@ -119,7 +135,6 @@ async function runMigrations() {
       custom_preference TEXT NOT NULL DEFAULT '',
       role_profile_key TEXT NOT NULL DEFAULT '',
       role_profile_description TEXT NOT NULL DEFAULT '',
-      is_builtin INTEGER NOT NULL DEFAULT 0,
       updated_at TEXT NOT NULL
     );
 
@@ -181,9 +196,13 @@ async function runMigrations() {
       error TEXT NOT NULL DEFAULT '',
       created_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS app_migrations (
+      key TEXT PRIMARY KEY,
+      applied_at TEXT NOT NULL
+    );
   `);
 
-  await ensureColumn('roles', 'is_builtin', 'INTEGER NOT NULL DEFAULT 0');
   await ensureColumn('roles', 'role_profile_key', "TEXT NOT NULL DEFAULT ''");
   await ensureColumn('roles', 'role_profile_description', "TEXT NOT NULL DEFAULT ''");
   await ensureColumn('contacts', 'role_mode', "TEXT NOT NULL DEFAULT 'template'");
@@ -195,17 +214,7 @@ async function runMigrations() {
   await ensureColumn('contacts', 'dingtalk_keyword', "TEXT NOT NULL DEFAULT ''");
   await ensureColumn('send_records', 'delivery_type', "TEXT NOT NULL DEFAULT 'generic_webhook'");
 
-  await db.batch(roleDefinitions.map((role): InStatement => ({
-    sql: `
-      INSERT INTO roles (key, label, default_preference, custom_preference, is_builtin, updated_at)
-      VALUES (?, ?, ?, '', 1, ?)
-      ON CONFLICT(key) DO UPDATE SET
-        label = excluded.label,
-        default_preference = excluded.default_preference,
-        is_builtin = 1
-    `,
-    args: [role.key, role.label, role.defaultPreference, now()],
-  })), 'write');
+  await removeLegacyBuiltinRoles();
 
   await db.execute(`
     INSERT INTO role_preference_sets (role_key, name, content, sort_order, created_at, updated_at)
@@ -218,34 +227,6 @@ async function runMigrations() {
       )
   `);
 
-  const countResult = await db.execute('SELECT COUNT(*) AS count FROM contacts');
-  if (numericValue(value<number | bigint>(countResult.rows[0]!, 'count')) === 0) {
-    const createdAt = now();
-    const defaults: ContactInput[] = [
-      { name: '产品同学', roleKey: 'product', webhookUrl: '', preference: '' },
-      { name: '测试同学', roleKey: 'qa', webhookUrl: '', preference: '' },
-      { name: '研发组长', roleKey: 'tech_lead', webhookUrl: '', preference: '' },
-    ];
-    await db.batch(defaults.map((contact): InStatement => ({
-      sql: `
-        INSERT INTO contacts (
-          name, role_key, role_mode, role_preference_id, custom_role_label, custom_role_preference,
-          delivery_type, webhook_url, dingtalk_secret, dingtalk_keyword, preference, active, created_at, updated_at
-        ) VALUES (?, ?, 'template', NULL, '', '', ?, ?, ?, ?, ?, 1, ?, ?)
-      `,
-      args: [
-        contact.name,
-        contact.roleKey ?? '',
-        contact.deliveryType ?? 'generic_webhook',
-        contact.webhookUrl ?? '',
-        contact.dingtalkSecret ?? '',
-        contact.dingtalkKeyword ?? '',
-        contact.preference ?? '',
-        createdAt,
-        createdAt,
-      ],
-    })), 'write');
-  }
 }
 
 export function migrate() {
@@ -294,11 +275,9 @@ function mapRole(row: any, preferenceSets: PreferenceSet[] = []): RoleRow {
     key: String(row.key),
     label: String(row.label),
     defaultPreference: String(row.default_preference ?? ''),
-    templatePreference: roleTemplatePreference(String(row.key)),
     customPreference: String(row.custom_preference ?? ''),
     roleProfileKey: String(row.role_profile_key ?? ''),
     roleProfileDescription: String(row.role_profile_description ?? ''),
-    isBuiltin: Boolean(row.is_builtin) || isBuiltinRoleKey(String(row.key)),
     usageCount: numericValue(row.usage_count),
     preferenceSets,
     updatedAt: String(row.updated_at ?? ''),
@@ -313,7 +292,7 @@ async function roleRows() {
         WHERE c.role_mode = 'template' AND c.role_key = r.key
       ) AS usage_count
       FROM roles r
-      ORDER BY r.is_builtin DESC, r.rowid ASC
+      ORDER BY r.rowid ASC
     `),
     db.execute(`
       SELECT p.*, (
@@ -355,8 +334,8 @@ export const repo = {
     const key = `custom_${randomUUID()}`;
     const timestamp = now();
     await db.execute({
-      sql: `INSERT INTO roles (key, label, default_preference, custom_preference, role_profile_key, role_profile_description, is_builtin, updated_at)
-            VALUES (?, ?, ?, '', ?, ?, 0, ?)`,
+      sql: `INSERT INTO roles (key, label, default_preference, custom_preference, role_profile_key, role_profile_description, updated_at)
+            VALUES (?, ?, ?, '', ?, ?, ?)`,
       args: [
         key,
         input.label.trim(),
@@ -371,15 +350,11 @@ export const repo = {
   async updateRole(key: RoleKey, input: Partial<RoleInput> & { customPreference?: string }) {
     const existing = await repo.role(key);
     if (!existing) throw notFound('角色不存在');
-    const label = existing.isBuiltin ? existing.label : input.label?.trim() ?? existing.label;
-    const defaultPreference = existing.isBuiltin
-      ? existing.defaultPreference
-      : input.defaultPreference?.trim() ?? existing.defaultPreference;
+    const label = input.label?.trim() ?? existing.label;
+    const defaultPreference = input.defaultPreference?.trim() ?? existing.defaultPreference;
     const customPreference = input.customPreference ?? existing.customPreference;
-    const roleProfileKey = existing.isBuiltin ? existing.roleProfileKey : input.roleProfileKey?.trim() ?? existing.roleProfileKey;
-    const roleProfileDescription = existing.isBuiltin
-      ? existing.roleProfileDescription
-      : input.roleProfileDescription?.trim() ?? existing.roleProfileDescription;
+    const roleProfileKey = input.roleProfileKey?.trim() ?? existing.roleProfileKey;
+    const roleProfileDescription = input.roleProfileDescription?.trim() ?? existing.roleProfileDescription;
     await db.execute({
       sql: `UPDATE roles SET label = ?, default_preference = ?, custom_preference = ?, role_profile_key = ?, role_profile_description = ?, updated_at = ? WHERE key = ?`,
       args: [label, defaultPreference, customPreference, roleProfileKey, roleProfileDescription, now(), key],
@@ -389,7 +364,6 @@ export const repo = {
   async deleteRole(key: RoleKey) {
     const role = await repo.role(key);
     if (!role) throw notFound('角色不存在');
-    if (role.isBuiltin) throw conflict('内置角色不可删除');
     if (role.usageCount > 0) throw conflict(`该角色仍被 ${role.usageCount} 位联系人使用，请先更换联系人角色`);
     await db.execute({ sql: 'DELETE FROM role_preference_sets WHERE role_key = ?', args: [key] });
     await db.execute({ sql: 'DELETE FROM roles WHERE key = ?', args: [key] });
@@ -501,11 +475,9 @@ export const repo = {
         key: `contact_custom_${contact.id}`,
         label: contact.customRoleLabel,
         defaultPreference: '',
-        templatePreference: '',
         customPreference: contact.customRolePreference,
         roleProfileKey: '',
         roleProfileDescription: '',
-        isBuiltin: false,
         usageCount: 0,
         preferenceSets: [],
         updatedAt: contact.updatedAt,

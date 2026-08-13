@@ -9,6 +9,7 @@ import { assertExternalFileModelAllowed, externalModelKindForSource } from './ai
 import { parseUploadedFile } from './parser.js';
 import { aiRateLimit, roleRecognitionRateLimit } from './rateLimit.js';
 import { findRoleProfileByName, roleProfiles } from './roleProfiles.js';
+import { findRoleFocusPresetByName, roleFocusPresets } from './roles.js';
 
 const router = express.Router();
 const upload = multer({
@@ -107,8 +108,21 @@ router.get('/role-profiles', (_req, res) => {
   res.json(roleProfiles);
 });
 
+router.get('/role-focus-presets', (_req, res) => {
+  res.json(roleFocusPresets);
+});
+
 router.post('/role-profiles/resolve', roleRecognitionRateLimit, async (req, res) => {
   const { roleLabel } = roleRecognitionSchema.parse(req.body);
+  const focusPreset = findRoleFocusPresetByName(roleLabel);
+  if (focusPreset) {
+    return res.json({
+      source: 'preset',
+      key: focusPreset.key,
+      label: focusPreset.label,
+      description: focusPreset.defaultPreference,
+    });
+  }
   const preset = findRoleProfileByName(roleLabel);
   if (preset) {
     return res.json({ source: 'preset', key: preset.key, label: preset.label, description: preset.description });
@@ -121,11 +135,22 @@ router.post('/role-profiles/resolve', roleRecognitionRateLimit, async (req, res)
 router.post('/role-suggestions', aiRateLimit, async (req, res) => {
   const body = roleSuggestionSchema.parse(req.body);
   validateRoleProfile(body);
-  const content = await generateRoleSuggestion(body);
+  if (!body.preferenceSetName) {
+    const focusPreset = findRoleFocusPresetByName(body.roleLabel);
+    if (focusPreset) return res.json({ content: focusPreset.defaultPreference, source: 'preset' });
+  }
+  const recognizedInput = !body.preferenceSetName && !body.roleProfileKey
+    ? await recognizeRole({ roleLabel: body.roleLabel })
+    : null;
+  const content = await generateRoleSuggestion(recognizedInput ? {
+    ...body,
+    roleProfileKey: 'deepseek',
+    roleProfileDescription: recognizedInput.description,
+  } : body);
   if (!content) {
     throw Object.assign(new Error('模型未返回角色配置建议，请稍后重试。'), { status: 502 });
   }
-  res.json({ content });
+  res.json({ content, source: 'deepseek' });
 });
 
 router.post('/roles', async (req, res) => {

@@ -11,11 +11,9 @@ export type Role = {
   key: string;
   label: string;
   defaultPreference: string;
-  templatePreference: string;
   customPreference: string;
   roleProfileKey: string;
   roleProfileDescription: string;
-  isBuiltin: boolean;
   usageCount: number;
   preferenceSets: PreferenceSet[];
 };
@@ -77,6 +75,20 @@ export type RoleRecognition = {
   description: string;
 };
 
+export type PreferenceTemplate = {
+  key: string;
+  name: string;
+  content: string;
+};
+
+export type RoleFocusPreset = {
+  key: string;
+  label: string;
+  aliases: string[];
+  defaultPreference: string;
+  preferenceTemplates?: PreferenceTemplate[];
+};
+
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const response = await fetch(url, options);
   const text = await response.text();
@@ -89,6 +101,7 @@ export const api = {
   health: () => request<{ ok: boolean; deepseekConfigured: boolean; model: string }>('/api/health'),
   roles: () => request<Role[]>('/api/roles'),
   roleProfiles: () => request<RoleProfile[]>('/api/role-profiles'),
+  roleFocusPresets: () => request<RoleFocusPreset[]>('/api/role-focus-presets'),
   resolveRoleProfile: (roleLabel: string) => request<RoleRecognition>('/api/role-profiles/resolve', {
     method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ roleLabel }),
   }),
@@ -98,7 +111,7 @@ export const api = {
   updateRole: (key: string, role: Partial<Pick<Role, 'label' | 'defaultPreference' | 'roleProfileKey' | 'roleProfileDescription'>>) => request<Role>(`/api/roles/${key}`, {
     method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(role),
   }),
-  generateRoleSuggestion: (input: RoleSuggestionInput) => request<{ content: string }>('/api/role-suggestions', {
+  generateRoleSuggestion: (input: RoleSuggestionInput) => request<{ content: string; source: 'preset' | 'deepseek' }>('/api/role-suggestions', {
     method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(input),
   }),
   deleteRole: (key: string) => request<void>(`/api/roles/${key}`, { method: 'DELETE' }),

@@ -28,16 +28,17 @@ The application assists people in identifying relevant information, risks, open 
 ## API Design
 
 - `GET /api/health`: check service status and DeepSeek configuration.
-- `GET /api/roles`: list built-in and custom role definitions, preferences, and preference sets.
+- `GET /api/roles`: list user-created role definitions, preferences, and preference sets.
 - `GET /api/role-profiles`: list role-profile presets used when creating or suggesting a role configuration.
-- `POST /api/roles`: create a reusable custom role.
+- `GET /api/role-focus-presets`: list local focus presets and optional preference templates.
+- `POST /api/roles`: create a reusable role.
 - `PUT /api/roles/:key`: update a role custom preference.
 - `PATCH /api/roles/:key`: update a reusable custom role and its profile details.
 - `DELETE /api/roles/:key`: delete an unused custom role.
 - `POST /api/roles/:key/preference-sets`: create a reusable preference set for a role.
 - `PATCH /api/preference-sets/:id`: update a preference set.
 - `DELETE /api/preference-sets/:id`: delete a preference set.
-- `POST /api/role-suggestions`: generate an editable focus-area or preference-set suggestion for a role.
+- `POST /api/role-suggestions`: use a local focus preset when matched, otherwise generate an editable focus-area or preference-set suggestion.
 - `GET /api/contacts`: list recipients.
 - `POST /api/contacts`: create a recipient with a role or recipient-specific role.
 - `PUT /api/contacts/:id`: update a recipient.

@@ -88,7 +88,6 @@ describe('DeepSeek provider', () => {
       expect(request.messages[1].content).toContain('收件人：AI');
       expect(request.messages[1].content).toContain('角色：我的 AI 编程工具');
       expect(request.messages[1].content).toContain('角色默认关注点：偏好直接给出实现要点。');
-      expect(request.messages[1].content).toContain('推荐提示词模板：模板偏好。');
       expect(request.messages[1].content).toContain('用户自定义补充：无额外要求。');
       expect(request.messages[1].content).toContain('收件人补充偏好：联系人偏好');
       expect(request.messages[1].content).toContain('变更：新增联系人管理。');
@@ -182,11 +181,9 @@ function sampleDraftRequest(): DraftRequest {
       key: 'my_ai_coding_tool',
       label: '我的 AI 编程工具',
       defaultPreference: '偏好直接给出实现要点。',
-      templatePreference: '模板偏好。',
       customPreference: '',
       roleProfileKey: '',
       roleProfileDescription: '',
-      isBuiltin: true,
       usageCount: 0,
       preferenceSets: [],
       updatedAt: '',

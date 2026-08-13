@@ -19,7 +19,7 @@ import {
   Upload,
   Users,
 } from 'lucide-react';
-import { api, type Contact, type ContactInput, type Draft, type Role, type RoleProfile, type RoleRecognition } from './api';
+import { api, type Contact, type ContactInput, type Draft, type Role, type RoleFocusPreset, type RoleProfile, type RoleRecognition } from './api';
 
 type DraftState = Draft & { selected: boolean; editedContent: string; sendStatus?: string };
 type ContactStatusFilter = 'active' | 'inactive' | 'all';
@@ -30,7 +30,7 @@ type AceternityCardProps = {
   as?: 'section' | 'article';
 };
 
-const blankContact = (roleKey = 'product'): ContactInput => ({
+const blankContact = (roleKey = ''): ContactInput => ({
   name: '',
   roleMode: 'template',
   roleKey,
@@ -51,6 +51,11 @@ function normalizeRoleName(value: string) {
 function matchedRoleProfile(label: string, profiles: RoleProfile[]) {
   const normalized = normalizeRoleName(label);
   return profiles.find((profile) => [profile.label, ...profile.aliases].some((alias) => normalizeRoleName(alias) === normalized)) ?? null;
+}
+
+function matchedRoleFocusPreset(label: string, presets: RoleFocusPreset[]) {
+  const normalized = normalizeRoleName(label);
+  return presets.find((preset) => [preset.label, ...preset.aliases].some((alias) => normalizeRoleName(alias) === normalized)) ?? null;
 }
 
 function AceternityCard({ children, className = '', as = 'section' }: AceternityCardProps) {
@@ -74,6 +79,7 @@ export function App() {
   const [health, setHealth] = useState<{ deepseekConfigured: boolean; model: string } | null>(null);
   const [roles, setRoles] = useState<Role[]>([]);
   const [roleProfiles, setRoleProfiles] = useState<RoleProfile[]>([]);
+  const [roleFocusPresets, setRoleFocusPresets] = useState<RoleFocusPreset[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [selectedContactIds, setSelectedContactIds] = useState<number[]>([]);
   const [sourceText, setSourceText] = useState('');
@@ -94,11 +100,18 @@ export function App() {
   const [roleRecognitions, setRoleRecognitions] = useState<Record<string, RoleRecognition>>({});
   const [preferenceSetName, setPreferenceSetName] = useState('');
   const [preferenceSetContent, setPreferenceSetContent] = useState('');
+  const [preferenceTemplateKey, setPreferenceTemplateKey] = useState('');
   const [contactSearch, setContactSearch] = useState('');
   const [contactRoleFilter, setContactRoleFilter] = useState('all');
   const [contactStatusFilter, setContactStatusFilter] = useState<ContactStatusFilter>('active');
 
   const roleMap = useMemo(() => new Map(roles.map((role) => [role.key, role])), [roles]);
+  const currentRoleKey = roleEditKey || roles[0]?.key || '';
+  const currentRole = roles.find((role) => role.key === currentRoleKey) ?? null;
+  const currentRoleFocusPreset = useMemo(
+    () => currentRole ? matchedRoleFocusPreset(currentRole.label, roleFocusPresets) : null,
+    [currentRole, roleFocusPresets],
+  );
   const filteredContacts = useMemo(() => {
     const query = contactSearch.trim().toLocaleLowerCase();
     return contacts.filter((contact) => {
@@ -118,13 +131,16 @@ export function App() {
 
   async function load() {
     setError('');
-    const [healthData, roleData, profileData, contactData] = await Promise.all([api.health(), api.roles(), api.roleProfiles(), api.contacts()]);
+    const [healthData, roleData, profileData, focusPresetData, contactData] = await Promise.all([
+      api.health(), api.roles(), api.roleProfiles(), api.roleFocusPresets(), api.contacts(),
+    ]);
     setHealth(healthData);
     setRoles(roleData);
     setRoleProfiles(profileData);
+    setRoleFocusPresets(focusPresetData);
     setContacts(contactData);
     setSelectedContactIds((current) => current.length ? current : contactData.filter((c) => c.active).map((c) => c.id));
-    setContactDraft(blankContact(roleData[0]?.key ?? 'product'));
+    setContactDraft(blankContact(roleData[0]?.key ?? ''));
   }
 
   useEffect(() => {
@@ -252,7 +268,7 @@ export function App() {
     setError('');
     try {
       await api.createContact(contactDraft);
-      setContactDraft(blankContact(roles[0]?.key ?? 'product'));
+      setContactDraft(blankContact(roles[0]?.key ?? ''));
       await load();
       setStatus('联系人已保存');
     } catch (err) {
@@ -379,6 +395,15 @@ export function App() {
   async function resolveAutomaticRoleProfile(roleLabel: string): Promise<RoleRecognition | null> {
     const normalizedLabel = roleLabel.trim();
     if (!normalizedLabel) return null;
+    const focusPreset = matchedRoleFocusPreset(normalizedLabel, roleFocusPresets);
+    if (focusPreset) {
+      return {
+        source: 'preset',
+        key: focusPreset.key,
+        label: focusPreset.label,
+        description: focusPreset.defaultPreference,
+      };
+    }
     const preset = matchedRoleProfile(normalizedLabel, roleProfiles);
     if (preset) {
       return { source: 'preset', key: preset.key, label: preset.label, description: preset.description };
@@ -402,7 +427,7 @@ export function App() {
   }
 
   async function recognizeSavedRole(role: Role) {
-    if (role.isBuiltin || role.roleProfileKey === 'custom' || !role.label.trim()) return;
+    if (role.roleProfileKey === 'custom' || !role.label.trim()) return;
     setBusy('role-recognition');
     setError('');
     try {
@@ -441,14 +466,16 @@ export function App() {
     setBusy('role-suggestion');
     setError('');
     try {
-      const { content } = await api.generateRoleSuggestion({
+      const { content, source } = await api.generateRoleSuggestion({
         roleLabel,
         ...(preferenceSetName !== undefined ? { preferenceSetName } : {}),
         ...(roleProfileKey ? { roleProfileKey } : {}),
         ...(roleProfileDescription ? { roleProfileDescription } : {}),
       });
       applySuggestion(content);
-      setStatus(preferenceSetName !== undefined ? '已生成偏好方案内容建议，请确认后保存' : '已生成默认关注点建议，请确认后保存');
+      setStatus(preferenceSetName !== undefined
+        ? '已生成偏好方案内容建议，请确认后保存'
+        : source === 'preset' ? '已应用本地关注点预设，请确认后保存' : '已生成默认关注点建议，请确认后保存');
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -516,6 +543,7 @@ export function App() {
       });
       setPreferenceSetName('');
       setPreferenceSetContent('');
+      setPreferenceTemplateKey('');
       setRoles(await api.roles());
       setStatus(`已为 ${role.label} 新增偏好方案`);
     } catch (err) {
@@ -565,9 +593,7 @@ export function App() {
   const selectedDraftCount = drafts.filter((draft) => draft.selected).length;
   const activeContactCount = contacts.filter((contact) => contact.active).length;
   const inactiveContactCount = contacts.length - activeContactCount;
-  const currentRoleKey = roleEditKey || roles[0]?.key;
   const canDeleteFilteredContacts = filteredContacts.length > 0 && filteredContacts.every((contact) => !contact.active);
-  const currentRole = roles.find((role) => role.key === currentRoleKey);
 
   return (
     <main className="shell">
@@ -974,12 +1000,12 @@ export function App() {
           <div className="panel-title">
             <Settings2 size={20} />
             <div>
-              <h2>角色模板与偏好</h2>
-              <p>内置岗位保持默认规则；自定义角色和偏好方案可按需复用</p>
+              <h2>角色与偏好</h2>
+              <p>角色、关注点和偏好方案均可按需创建与复用</p>
             </div>
           </div>
           <div className="role-template-layout">
-            <div className="role-template-list" aria-label="角色模板列表">
+            <div className="role-template-list" aria-label="角色列表">
               {roles.map((role) => (
                 <button
                   key={role.key}
@@ -987,7 +1013,7 @@ export function App() {
                   onClick={() => setRoleEditKey(role.key)}
                 >
                   <span>{role.label}</span>
-                  <small>{role.isBuiltin ? '内置' : `${role.usageCount} 位联系人`}</small>
+                  <small>{`${role.usageCount} 位联系人`}</small>
                 </button>
               ))}
             </div>
@@ -1001,7 +1027,7 @@ export function App() {
                   setNewRoleProfileKey(event.target.value);
                   if (event.target.value !== 'custom') setNewRoleProfileDescription('');
                 }}>
-                  <option value="">自动识别{newRoleLabel.trim() ? `：${matchedRoleProfile(newRoleLabel, roleProfiles)?.label ?? (newRoleRecognition ? `DeepSeek：${newRoleRecognition.label}` : '失焦后识别')}` : ''}</option>
+                  <option value="">自动识别{newRoleLabel.trim() ? `：${matchedRoleFocusPreset(newRoleLabel, roleFocusPresets)?.label ?? matchedRoleProfile(newRoleLabel, roleProfiles)?.label ?? (newRoleRecognition ? `DeepSeek：${newRoleRecognition.label}` : '失焦后识别')}` : ''}</option>
                   <option value="custom">自定义角色说明</option>
                 </select>
                 {newRoleProfileKey === 'custom' && <input aria-label="新增角色自定义说明" value={newRoleProfileDescription} placeholder="例如：负责向管理层汇报项目进展" onChange={(event) => setNewRoleProfileDescription(event.target.value)} />}
@@ -1013,12 +1039,9 @@ export function App() {
                 <div className="role-editor-content">
                   <div className="role-editor-heading">
                     <strong>{currentRole.label}</strong>
-                    <span className={currentRole.isBuiltin ? 'role-badge builtin' : 'role-badge'}>{currentRole.isBuiltin ? '内置角色' : `${currentRole.usageCount} 位联系人使用`}</span>
+                    <span className="role-badge">{`${currentRole.usageCount} 位联系人使用`}</span>
                   </div>
-                  {currentRole.isBuiltin ? (
-                    <p>{currentRole.defaultPreference}</p>
-                  ) : (
-                    <>
+                  <>
                       <label>角色名称
                         <input value={currentRole.label} onChange={(event) => {
                           setRoleRecognitions((current) => {
@@ -1034,7 +1057,7 @@ export function App() {
                           roleProfileKey: event.target.value,
                           roleProfileDescription: event.target.value === 'custom' ? item.roleProfileDescription : '',
                         } : item))}>
-                          <option value="">自动识别：{matchedRoleProfile(currentRole.label, roleProfiles)?.label ?? (roleRecognitions[currentRole.key]?.source === 'deepseek' ? `DeepSeek：${roleRecognitions[currentRole.key]?.label}` : currentRole.roleProfileKey === 'deepseek' ? 'DeepSeek 已识别' : '失焦后识别')}</option>
+                          <option value="">自动识别：{matchedRoleFocusPreset(currentRole.label, roleFocusPresets)?.label ?? matchedRoleProfile(currentRole.label, roleProfiles)?.label ?? (roleRecognitions[currentRole.key]?.source === 'deepseek' ? `DeepSeek：${roleRecognitions[currentRole.key]?.label}` : currentRole.roleProfileKey === 'deepseek' ? 'DeepSeek 已识别' : '失焦后识别')}</option>
                           <option value="custom">自定义角色说明</option>
                         </select>
                       </label>
@@ -1049,14 +1072,7 @@ export function App() {
                         <button onClick={() => saveRole(currentRole)}><Save size={17} />保存角色</button>
                         <button className="danger-action" onClick={() => deleteRole(currentRole)} disabled={currentRole.usageCount > 0}><Trash2 size={17} />删除角色</button>
                       </div>
-                    </>
-                  )}
-                  {currentRole.templatePreference && (
-                    <div className="role-template">
-                      <strong>AI 编程角色专用模板</strong>
-                      <pre>{currentRole.templatePreference}</pre>
-                    </div>
-                  )}
+                  </>
                   <div className="preference-set-section">
                     <div className="preference-set-heading">
                       <strong>偏好方案</strong>
@@ -1086,13 +1102,28 @@ export function App() {
                     )}
                     <div className="new-preference-set-form">
                       <input aria-label="偏好方案名称" value={preferenceSetName} placeholder="偏好方案名称，例如：简洁汇报" onChange={(event) => setPreferenceSetName(event.target.value)} />
+                      {currentRoleFocusPreset?.preferenceTemplates?.length ? (
+                        <select aria-label="预设偏好方案" value={preferenceTemplateKey} onChange={(event) => {
+                          const template = currentRoleFocusPreset.preferenceTemplates?.find((item) => item.key === event.target.value);
+                          setPreferenceTemplateKey(event.target.value);
+                          if (template) {
+                            setPreferenceSetName(template.name);
+                            setPreferenceSetContent(template.content);
+                          }
+                        }}>
+                          <option value="">选择预设偏好方案</option>
+                          {currentRoleFocusPreset.preferenceTemplates.map((template) => (
+                            <option key={template.key} value={template.key}>{template.name}</option>
+                          ))}
+                        </select>
+                      ) : null}
                       <textarea aria-label="偏好方案内容" value={preferenceSetContent} placeholder="例如：先给结论，使用口语化表达，并明确列出风险。" onChange={(event) => setPreferenceSetContent(event.target.value)} />
                       <button onClick={() => generatePreferenceSetContent(currentRole, preferenceSetName, preferenceSetContent, setPreferenceSetContent)} disabled={busy === 'role-suggestion' || !preferenceSetName.trim()}><Sparkles size={17} />AI 生成内容</button>
                       <button onClick={() => createPreferenceSet(currentRole)}><Plus size={17} />新增偏好方案</button>
                     </div>
                   </div>
                 </div>
-              ) : <div className="empty-state compact">请先选择或新增一个角色模板。</div>}
+              ) : <div className="empty-state compact">请先选择或新增一个角色。</div>}
             </div>
           </div>
         </AceternityCard>

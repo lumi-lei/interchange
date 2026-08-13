@@ -59,17 +59,17 @@ flowchart TB
 
 1. 输入客观事实，或上传 Word、PDF、Excel、PPT、HTML、截图等文件。
 2. 在本地解析文件并转换为可编辑文本，支持下载转换后的 Markdown。
-3. 为收件人选择内置角色，或创建自定义角色、关注点与偏好方案。
+3. 创建可复用角色、默认关注点与偏好方案，并为收件人选择角色或配置联系人专属角色。
 4. 调用模型生成面向不同角色的草稿。
 5. 人工审阅、修改草稿，并将其用于沟通或辅助决策。
 6. 用户确认后，才通过钉钉机器人或 Webhook 转发给指定收件人。
 7. 在 AI 编程场景中，可使用项目 Skill 将已确认的变更沉淀为长期规范文档。
 
-## 内置角色与自定义能力
+## 角色关注点预设与自定义能力
 
-内置角色包括产品、测试、研发组长、部门领导、客户、我的 AI 编程软件和同项目同事的 AI 编程软件。
+角色均由用户创建、编辑和删除。点击“AI 生成关注点”时，系统会优先使用本地预设表按角色名称及常用别名匹配产品、测试、研发负责人、管理层、客户和 AI 编程协作等关注点；未命中时才调用模型生成可编辑建议。
 
-其中两个 AI 编程软件角色是开发场景专用的提示词角色：下游 AI 会先读取相关项目文档、明确任务边界与待确认问题，再进入实现阶段。除此以外，用户可创建任意通用自定义角色，并设置默认关注点、偏好方案或联系人专属偏好；这些能力不限定于软件开发。
+AI 编程工作流作为可选偏好方案提供：当角色名称命中相应 AI 编程预设时，用户可在偏好方案区域选择并保存主执行或协作工作流模板。用户也可创建任意通用角色、偏好方案或联系人专属角色，这些能力不限定于软件开发。
 
 ## 演进方向
 
@@ -170,11 +170,12 @@ npm test
 ## API 概览
 
 - `GET /api/health`：服务状态与模型配置
-- `GET /api/roles`：查看内置与自定义角色、角色偏好和偏好方案
+- `GET /api/roles`：查看用户创建的角色、角色偏好和偏好方案
 - `GET /api/role-profiles`：查看角色画像预设
-- `POST /api/roles`、`PATCH /api/roles/:key`、`DELETE /api/roles/:key`：管理自定义角色
+- `GET /api/role-focus-presets`：查看本地角色关注点及可选偏好方案预设
+- `POST /api/roles`、`PATCH /api/roles/:key`、`DELETE /api/roles/:key`：管理角色
 - `POST /api/roles/:key/preference-sets`、`PATCH /api/preference-sets/:id`、`DELETE /api/preference-sets/:id`：管理偏好方案
-- `POST /api/role-suggestions`：生成可编辑的角色关注点或偏好方案建议
+- `POST /api/role-suggestions`：优先匹配本地预设，否则生成可编辑的角色关注点或偏好方案建议
 - `GET /api/contacts`、`POST /api/contacts`、`PUT /api/contacts/:id`、`DELETE /api/contacts/:id`：管理收件人
 - `POST /api/inputs/parse`：解析文本或上传文件
 - `POST /api/generate`：生成角色化草稿
