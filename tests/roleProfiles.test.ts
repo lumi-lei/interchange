@@ -9,6 +9,12 @@ describe('role profile presets', () => {
     });
   });
 
+  it('recognizes a preset profile name locally as well as its aliases', () => {
+    expect(findRoleProfileByName('AI 编程助手')).toMatchObject({
+      key: 'ai_coding_assistant',
+    });
+  });
+
   it('keeps automatic recognition when no custom description is selected', () => {
     expect(resolveRoleProfile({ roleLabel: '豆包' })).toMatchObject({
       key: 'general_ai_assistant',
@@ -24,6 +30,18 @@ describe('role profile presets', () => {
     })).toMatchObject({
       label: '自定义角色说明',
       source: 'custom',
+    });
+  });
+
+  it('keeps a DeepSeek-recognized description when the local alias table has no match', () => {
+    expect(resolveRoleProfile({
+      roleLabel: 'SMT 工艺工程师',
+      roleProfileKey: 'deepseek',
+      roleProfileDescription: '关注贴片工艺参数、良率、缺陷闭环、产线变更与验证。',
+    })).toMatchObject({
+      key: 'deepseek',
+      label: 'DeepSeek 识别角色',
+      source: 'deepseek',
     });
   });
 });

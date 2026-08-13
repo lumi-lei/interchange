@@ -39,7 +39,7 @@ export const roleProfiles: RoleProfile[] = [
 ];
 
 export type ResolvedRoleProfile = Pick<RoleProfile, 'key' | 'label' | 'description'> & {
-  source: 'preset' | 'custom';
+  source: 'preset' | 'deepseek' | 'custom';
 };
 
 function normalizeRoleName(value: string) {
@@ -53,7 +53,7 @@ export function findRoleProfileByKey(key: string) {
 export function findRoleProfileByName(label: string) {
   const normalized = normalizeRoleName(label);
   if (!normalized) return null;
-  return roleProfiles.find((profile) => profile.aliases.some((alias) => normalizeRoleName(alias) === normalized)) ?? null;
+  return roleProfiles.find((profile) => [profile.label, ...profile.aliases].some((alias) => normalizeRoleName(alias) === normalized)) ?? null;
 }
 
 export function resolveRoleProfile(input: {
@@ -66,6 +66,10 @@ export function resolveRoleProfile(input: {
 
   if (key === 'custom') {
     return description ? { key, label: '自定义角色说明', description, source: 'custom' } : null;
+  }
+
+  if (key === 'deepseek') {
+    return description ? { key, label: 'DeepSeek 识别角色', description, source: 'deepseek' } : null;
   }
 
   const matched = findRoleProfileByName(input.roleLabel);

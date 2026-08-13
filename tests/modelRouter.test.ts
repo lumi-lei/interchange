@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { config, type TextModelProviderName } from '../server/config.js';
-import { generateDraft, generateRoleSuggestion, resolveTextProvider } from '../server/ai/modelRouter.js';
+import { generateDraft, generateRoleSuggestion, recognizeRole, resolveTextProvider } from '../server/ai/modelRouter.js';
 import { deepSeekProvider } from '../server/ai/providers/deepseek.js';
 import type { DraftRequest } from '../server/ai/types.js';
 
@@ -55,6 +55,19 @@ describe('model router', () => {
 
     await expect(generateRoleSuggestion({ roleLabel: '豆包', preferenceSetName: '严肃点' })).resolves.toBe('建议内容');
     expect(providerSpy).toHaveBeenCalledWith({ roleLabel: '豆包', preferenceSetName: '严肃点' });
+  });
+
+  it('routes unmatched role recognition through the resolved text provider', async () => {
+    config.textModelProvider = 'deepseek';
+    const providerSpy = vi.spyOn(deepSeekProvider, 'recognizeRole').mockResolvedValueOnce({
+      label: '硬件测试工程师',
+      description: '关注测试覆盖、设备配置、异常定位与验证结论。',
+    });
+
+    await expect(recognizeRole({ roleLabel: '硬件测试工程师' })).resolves.toMatchObject({
+      label: '硬件测试工程师',
+    });
+    expect(providerSpy).toHaveBeenCalledWith({ roleLabel: '硬件测试工程师' });
   });
 });
 

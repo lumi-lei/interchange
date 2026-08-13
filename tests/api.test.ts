@@ -79,6 +79,40 @@ describe('Interchange API', () => {
     ]));
   });
 
+  it('uses the local alias table before falling back to DeepSeek role recognition', async () => {
+    const recognitionSpy = vi.spyOn(deepSeekProvider, 'recognizeRole');
+    const app = createApp();
+
+    const preset = await request(app)
+      .post('/api/role-profiles/resolve')
+      .send({ roleLabel: 'Codex' })
+      .expect(200);
+
+    expect(preset.body).toMatchObject({
+      source: 'preset',
+      key: 'ai_coding_assistant',
+      label: 'AI 编程助手',
+    });
+    expect(recognitionSpy).not.toHaveBeenCalled();
+
+    recognitionSpy.mockResolvedValueOnce({
+      label: 'SMT 工艺工程师',
+      description: '关注贴片工艺参数、良率、缺陷闭环、产线变更与验证。',
+    });
+    const fallback = await request(app)
+      .post('/api/role-profiles/resolve')
+      .send({ roleLabel: 'SMT 工艺工程师' })
+      .expect(200);
+
+    expect(recognitionSpy).toHaveBeenCalledWith({ roleLabel: 'SMT 工艺工程师' });
+    expect(fallback.body).toEqual({
+      source: 'deepseek',
+      key: 'deepseek',
+      label: 'SMT 工艺工程师',
+      description: '关注贴片工艺参数、良率、缺陷闭环、产线变更与验证。',
+    });
+  });
+
   it('serves JSON health responses from the Vercel API function entrypoint', async () => {
     const { default: vercelApiApp } = await import('../api/[...path].js');
 

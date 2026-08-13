@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildDraftMessages, buildRoleSuggestionMessages } from '../server/ai/prompts.js';
+import { buildDraftMessages, buildRoleRecognitionMessages, buildRoleSuggestionMessages } from '../server/ai/prompts.js';
 import type { DraftRequest } from '../server/ai/types.js';
 
 describe('draft prompts', () => {
@@ -86,6 +86,14 @@ describe('draft prompts', () => {
 
     expect(messages[1].content).toContain('识别类别：自定义角色说明');
     expect(messages[1].content).toContain('代码上下文、测试和验收');
+  });
+
+  it('asks DeepSeek for structured professional-role recognition', () => {
+    const messages = buildRoleRecognitionMessages({ roleLabel: 'SMT 工艺工程师' });
+
+    expect(messages[0].content).toContain('电子制造服务、硬件设计与设置、软件开发');
+    expect(messages[0].content).toContain('JSON');
+    expect(messages[1].content).toContain('角色名称：SMT 工艺工程师');
   });
 });
 

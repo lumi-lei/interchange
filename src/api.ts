@@ -70,6 +70,13 @@ export type RoleProfile = {
   description: string;
 };
 
+export type RoleRecognition = {
+  source: 'preset' | 'deepseek';
+  key: string;
+  label: string;
+  description: string;
+};
+
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const response = await fetch(url, options);
   const text = await response.text();
@@ -82,6 +89,9 @@ export const api = {
   health: () => request<{ ok: boolean; deepseekConfigured: boolean; model: string }>('/api/health'),
   roles: () => request<Role[]>('/api/roles'),
   roleProfiles: () => request<RoleProfile[]>('/api/role-profiles'),
+  resolveRoleProfile: (roleLabel: string) => request<RoleRecognition>('/api/role-profiles/resolve', {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ roleLabel }),
+  }),
   createRole: (role: Pick<Role, 'label' | 'defaultPreference' | 'roleProfileKey' | 'roleProfileDescription'>) => request<Role>('/api/roles', {
     method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(role),
   }),

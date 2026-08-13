@@ -66,6 +66,13 @@ export const aiRateLimit = createRateLimiter({
   message: 'Too many generation requests. Please wait and try again.',
 });
 
+export const roleRecognitionRateLimit = createRateLimiter({
+  name: 'role-recognition',
+  max: () => config.roleRecognitionRateLimitMax,
+  windowMs: () => config.rateLimitWindowMs,
+  message: 'Too many role recognition requests. Please wait and try again.',
+});
+
 export function resetRateLimitStores() {
   for (const store of stores) {
     store.clear();

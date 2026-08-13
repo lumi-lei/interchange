@@ -4,11 +4,11 @@ import { z } from 'zod';
 import { config } from './config.js';
 import { repo, toPublicContact, type Contact } from './db.js';
 import { buildDeliveryRequest } from './delivery.js';
-import { generateDraft, generateRoleSuggestion } from './ai/modelRouter.js';
+import { generateDraft, generateRoleSuggestion, recognizeRole } from './ai/modelRouter.js';
 import { assertExternalFileModelAllowed, externalModelKindForSource } from './ai/compliance.js';
 import { parseUploadedFile } from './parser.js';
-import { aiRateLimit } from './rateLimit.js';
-import { roleProfiles } from './roleProfiles.js';
+import { aiRateLimit, roleRecognitionRateLimit } from './rateLimit.js';
+import { findRoleProfileByName, roleProfiles } from './roleProfiles.js';
 
 const router = express.Router();
 const upload = multer({
@@ -71,6 +71,9 @@ const roleSuggestionSchema = z.object({
   roleProfileKey: z.string().trim().max(80).optional(),
   roleProfileDescription: z.string().trim().max(400).optional(),
 });
+const roleRecognitionSchema = z.object({
+  roleLabel: z.string().trim().min(2).max(80),
+});
 
 async function validateContactConfiguration(contact: Pick<Contact, 'roleMode' | 'roleKey' | 'rolePreferenceId' | 'customRoleLabel' | 'customRolePreference'>) {
   const error = await repo.validateContactConfiguration(contact);
@@ -81,7 +84,7 @@ function validateRoleProfile(input: { roleProfileKey?: string; roleProfileDescri
   const key = input.roleProfileKey?.trim() ?? '';
   const description = input.roleProfileDescription?.trim() ?? '';
   if (!key) return;
-  if (key === 'custom') {
+  if (key === 'custom' || key === 'deepseek') {
     if (!description) throw Object.assign(new Error('使用自定义角色说明时，请填写说明内容。'), { status: 400 });
     return;
   }
@@ -102,6 +105,17 @@ router.get('/roles', async (_req, res) => {
 
 router.get('/role-profiles', (_req, res) => {
   res.json(roleProfiles);
+});
+
+router.post('/role-profiles/resolve', roleRecognitionRateLimit, async (req, res) => {
+  const { roleLabel } = roleRecognitionSchema.parse(req.body);
+  const preset = findRoleProfileByName(roleLabel);
+  if (preset) {
+    return res.json({ source: 'preset', key: preset.key, label: preset.label, description: preset.description });
+  }
+
+  const recognized = await recognizeRole({ roleLabel });
+  res.json({ source: 'deepseek', key: 'deepseek', ...recognized });
 });
 
 router.post('/role-suggestions', aiRateLimit, async (req, res) => {

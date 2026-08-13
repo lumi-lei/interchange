@@ -1,4 +1,5 @@
 import type { DraftMessage, DraftRequest, RoleSuggestionRequest } from './types.js';
+import type { RoleRecognitionRequest } from './types.js';
 import { resolveRoleProfile } from '../roleProfiles.js';
 
 export const systemPrompt = `你是 Interchange，一个面向 AI 编程团队的消息转换助手。
@@ -75,5 +76,23 @@ export function buildRoleSuggestionMessages(input: RoleSuggestionRequest): Draft
   return [
     { role: 'system', content: roleSuggestionSystemPrompt },
     { role: 'user', content: task.join('\n') },
+  ];
+}
+
+export function buildRoleRecognitionMessages({ roleLabel }: RoleRecognitionRequest): DraftMessage[] {
+  return [
+    {
+      role: 'system',
+      content: `你是 Interchange 的角色识别助手。根据角色名称识别其在工作沟通中的职责和信息关注点，覆盖电子制造服务、硬件设计与设置、软件开发及其他专业领域。
+必须遵守：
+1. 只输出一个 JSON 对象，不要使用 Markdown 或代码块。
+2. JSON 必须包含 label 和 description 两个字符串字段。
+3. label 是简洁的中文角色类别，长度不超过 30 个字；description 用 40 到 180 个汉字说明职责、常见关注点和沟通重点。
+4. 仅依据角色名称能够合理推断的内容；名称含义不明确时，label 使用“专业协作角色”，description 使用通用、可编辑的协作关注点，绝不编造组织、权限、行业背景或具体资质。`,
+    },
+    {
+      role: 'user',
+      content: `角色名称：${roleLabel.trim()}\n请识别该角色。`,
+    },
   ];
 }

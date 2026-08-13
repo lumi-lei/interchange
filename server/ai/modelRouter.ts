@@ -1,6 +1,6 @@
 import { config } from '../config.js';
 import { deepSeekProvider } from './providers/deepseek.js';
-import type { DraftRequest, RoleSuggestionRequest, TextModelProvider } from './types.js';
+import type { DraftRequest, RoleRecognitionRequest, RoleSuggestionRequest, TextModelProvider } from './types.js';
 
 const textProviders: Record<string, TextModelProvider> = {
   deepseek: deepSeekProvider,
@@ -26,4 +26,8 @@ export async function generateDraft(input: DraftRequest) {
 export async function generateRoleSuggestion(input: RoleSuggestionRequest) {
   const response = await resolveTextProvider().generateRoleSuggestion(input);
   return response.content;
+}
+
+export async function recognizeRole(input: RoleRecognitionRequest) {
+  return resolveTextProvider().recognizeRole(input);
 }

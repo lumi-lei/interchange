@@ -19,7 +19,7 @@ import {
   Upload,
   Users,
 } from 'lucide-react';
-import { api, type Contact, type ContactInput, type Draft, type Role, type RoleProfile } from './api';
+import { api, type Contact, type ContactInput, type Draft, type Role, type RoleProfile, type RoleRecognition } from './api';
 
 type DraftState = Draft & { selected: boolean; editedContent: string; sendStatus?: string };
 type ContactStatusFilter = 'active' | 'inactive' | 'all';
@@ -50,7 +50,7 @@ function normalizeRoleName(value: string) {
 
 function matchedRoleProfile(label: string, profiles: RoleProfile[]) {
   const normalized = normalizeRoleName(label);
-  return profiles.find((profile) => profile.aliases.some((alias) => normalizeRoleName(alias) === normalized)) ?? null;
+  return profiles.find((profile) => [profile.label, ...profile.aliases].some((alias) => normalizeRoleName(alias) === normalized)) ?? null;
 }
 
 function AceternityCard({ children, className = '', as = 'section' }: AceternityCardProps) {
@@ -90,6 +90,8 @@ export function App() {
   const [newRoleDefaultPreference, setNewRoleDefaultPreference] = useState('');
   const [newRoleProfileKey, setNewRoleProfileKey] = useState('');
   const [newRoleProfileDescription, setNewRoleProfileDescription] = useState('');
+  const [newRoleRecognition, setNewRoleRecognition] = useState<RoleRecognition | null>(null);
+  const [roleRecognitions, setRoleRecognitions] = useState<Record<string, RoleRecognition>>({});
   const [preferenceSetName, setPreferenceSetName] = useState('');
   const [preferenceSetContent, setPreferenceSetContent] = useState('');
   const [contactSearch, setContactSearch] = useState('');
@@ -330,11 +332,18 @@ export function App() {
   }
 
   async function saveRole(role: Role) {
+    let roleProfileKey = ['custom', 'deepseek'].includes(role.roleProfileKey) ? role.roleProfileKey : '';
+    let roleProfileDescription = roleProfileKey ? role.roleProfileDescription : '';
+    if (!roleProfileKey) {
+      const recognized = await resolveAutomaticRoleProfile(role.label);
+      roleProfileKey = recognized?.source === 'deepseek' ? 'deepseek' : '';
+      roleProfileDescription = recognized?.source === 'deepseek' ? recognized.description : '';
+    }
     const updated = await api.updateRole(role.key, {
       label: role.label,
       defaultPreference: role.defaultPreference,
-      roleProfileKey: role.roleProfileKey === 'custom' ? 'custom' : '',
-      roleProfileDescription: role.roleProfileKey === 'custom' ? role.roleProfileDescription : '',
+      roleProfileKey,
+      roleProfileDescription,
     });
     setRoles((current) => current.map((item) => (item.key === updated.key ? updated : item)));
     setStatus(`${role.label} 角色偏好已保存`);
@@ -345,11 +354,12 @@ export function App() {
     setBusy('role');
     setError('');
     try {
+      const recognized = newRoleProfileKey === 'custom' ? null : newRoleRecognition ?? await resolveAutomaticRoleProfile(newRoleLabel);
       const role = await api.createRole({
         label: newRoleLabel,
         defaultPreference: newRoleDefaultPreference,
-        roleProfileKey: newRoleProfileKey,
-        roleProfileDescription: newRoleProfileDescription,
+        roleProfileKey: newRoleProfileKey === 'custom' ? 'custom' : recognized?.source === 'deepseek' ? 'deepseek' : '',
+        roleProfileDescription: newRoleProfileKey === 'custom' ? newRoleProfileDescription : recognized?.source === 'deepseek' ? recognized.description : '',
       });
       setRoles((current) => [...current, role]);
       setRoleEditKey(role.key);
@@ -357,7 +367,54 @@ export function App() {
       setNewRoleDefaultPreference('');
       setNewRoleProfileKey('');
       setNewRoleProfileDescription('');
+      setNewRoleRecognition(null);
       setStatus(`已新增角色：${role.label}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy('');
+    }
+  }
+
+  async function resolveAutomaticRoleProfile(roleLabel: string): Promise<RoleRecognition | null> {
+    const normalizedLabel = roleLabel.trim();
+    if (!normalizedLabel) return null;
+    const preset = matchedRoleProfile(normalizedLabel, roleProfiles);
+    if (preset) {
+      return { source: 'preset', key: preset.key, label: preset.label, description: preset.description };
+    }
+    return api.resolveRoleProfile(normalizedLabel);
+  }
+
+  async function recognizeNewRole() {
+    if (!newRoleLabel.trim() || newRoleProfileKey === 'custom') return;
+    setBusy('role-recognition');
+    setError('');
+    try {
+      const recognized = await resolveAutomaticRoleProfile(newRoleLabel);
+      setNewRoleRecognition(recognized);
+      if (recognized?.source === 'deepseek') setStatus(`已由 DeepSeek 识别为：${recognized.label}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy('');
+    }
+  }
+
+  async function recognizeSavedRole(role: Role) {
+    if (role.isBuiltin || role.roleProfileKey === 'custom' || !role.label.trim()) return;
+    setBusy('role-recognition');
+    setError('');
+    try {
+      const recognized = await resolveAutomaticRoleProfile(role.label);
+      if (!recognized) return;
+      setRoleRecognitions((current) => ({ ...current, [role.key]: recognized }));
+      setRoles((items) => items.map((item) => item.key === role.key ? {
+        ...item,
+        roleProfileKey: recognized.source === 'deepseek' ? 'deepseek' : '',
+        roleProfileDescription: recognized.source === 'deepseek' ? recognized.description : '',
+      } : item));
+      if (recognized.source === 'deepseek') setStatus(`已由 DeepSeek 识别为：${recognized.label}，请保存角色以应用`);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -399,21 +456,42 @@ export function App() {
     }
   }
 
-  function generateNewRoleDefaultPreference() {
+  async function generateNewRoleDefaultPreference() {
     if (newRoleDefaultPreference.trim() && !window.confirm('生成的建议将覆盖当前默认关注点，是否继续？')) return;
-    void generateRoleSuggestion(newRoleLabel, undefined, newRoleProfileKey, newRoleProfileDescription, setNewRoleDefaultPreference);
+    let profileKey = newRoleProfileKey;
+    let profileDescription = newRoleProfileDescription;
+    if (!profileKey) {
+      setBusy('role-recognition');
+      setError('');
+      try {
+        const recognized = newRoleRecognition ?? await resolveAutomaticRoleProfile(newRoleLabel);
+        setNewRoleRecognition(recognized);
+        if (recognized?.source === 'deepseek') {
+          profileKey = 'deepseek';
+          profileDescription = recognized.description;
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+        return;
+      } finally {
+        setBusy('');
+      }
+    }
+    void generateRoleSuggestion(newRoleLabel, undefined, profileKey, profileDescription, setNewRoleDefaultPreference);
   }
 
   function generateCurrentRoleDefaultPreference(role: Role) {
     if (role.defaultPreference.trim() && !window.confirm('生成的建议将覆盖当前默认关注点，是否继续？')) return;
-    void generateRoleSuggestion(role.label, undefined, role.roleProfileKey === 'custom' ? 'custom' : '', role.roleProfileKey === 'custom' ? role.roleProfileDescription : '', (content) => {
+    const profileKey = ['custom', 'deepseek'].includes(role.roleProfileKey) ? role.roleProfileKey : '';
+    void generateRoleSuggestion(role.label, undefined, profileKey, profileKey ? role.roleProfileDescription : '', (content) => {
       setRoles((items) => items.map((item) => (item.key === role.key ? { ...item, defaultPreference: content } : item)));
     });
   }
 
   function generatePreferenceSetContent(role: Role, name: string, currentContent: string, applySuggestion: (content: string) => void) {
     if (currentContent.trim() && !window.confirm('生成的建议将覆盖当前偏好方案内容，是否继续？')) return;
-    void generateRoleSuggestion(role.label, name, role.roleProfileKey === 'custom' ? 'custom' : '', role.roleProfileKey === 'custom' ? role.roleProfileDescription : '', applySuggestion);
+    const profileKey = ['custom', 'deepseek'].includes(role.roleProfileKey) ? role.roleProfileKey : '';
+    void generateRoleSuggestion(role.label, name, profileKey, profileKey ? role.roleProfileDescription : '', applySuggestion);
   }
 
   async function deleteRole(role: Role) {
@@ -915,12 +993,15 @@ export function App() {
             </div>
             <div className="role-editor">
               <div className="new-role-form">
-                <input aria-label="自定义角色名称" value={newRoleLabel} placeholder="新增自定义角色名称" onChange={(event) => setNewRoleLabel(event.target.value)} />
+                <input aria-label="自定义角色名称" value={newRoleLabel} placeholder="新增自定义角色名称" onChange={(event) => {
+                  setNewRoleLabel(event.target.value);
+                  setNewRoleRecognition(null);
+                }} onBlur={() => void recognizeNewRole()} />
                 <select aria-label="新增角色识别方式" value={newRoleProfileKey} onChange={(event) => {
                   setNewRoleProfileKey(event.target.value);
                   if (event.target.value !== 'custom') setNewRoleProfileDescription('');
                 }}>
-                  <option value="">自动识别{newRoleLabel.trim() ? `：${matchedRoleProfile(newRoleLabel, roleProfiles)?.label ?? '未识别'}` : ''}</option>
+                  <option value="">自动识别{newRoleLabel.trim() ? `：${matchedRoleProfile(newRoleLabel, roleProfiles)?.label ?? (newRoleRecognition ? `DeepSeek：${newRoleRecognition.label}` : '失焦后识别')}` : ''}</option>
                   <option value="custom">自定义角色说明</option>
                 </select>
                 {newRoleProfileKey === 'custom' && <input aria-label="新增角色自定义说明" value={newRoleProfileDescription} placeholder="例如：负责向管理层汇报项目进展" onChange={(event) => setNewRoleProfileDescription(event.target.value)} />}
@@ -939,7 +1020,13 @@ export function App() {
                   ) : (
                     <>
                       <label>角色名称
-                        <input value={currentRole.label} onChange={(event) => setRoles((items) => items.map((item) => item.key === currentRole.key ? { ...item, label: event.target.value } : item))} />
+                        <input value={currentRole.label} onChange={(event) => {
+                          setRoleRecognitions((current) => {
+                            const { [currentRole.key]: _previous, ...rest } = current;
+                            return rest;
+                          });
+                          setRoles((items) => items.map((item) => item.key === currentRole.key ? { ...item, label: event.target.value, roleProfileKey: item.roleProfileKey === 'custom' ? 'custom' : '', roleProfileDescription: item.roleProfileKey === 'custom' ? item.roleProfileDescription : '' } : item));
+                        }} onBlur={(event) => void recognizeSavedRole({ ...currentRole, label: event.currentTarget.value })} />
                       </label>
                       <label>角色识别方式
                         <select value={currentRole.roleProfileKey === 'custom' ? 'custom' : ''} onChange={(event) => setRoles((items) => items.map((item) => item.key === currentRole.key ? {
@@ -947,7 +1034,7 @@ export function App() {
                           roleProfileKey: event.target.value,
                           roleProfileDescription: event.target.value === 'custom' ? item.roleProfileDescription : '',
                         } : item))}>
-                          <option value="">自动识别：{matchedRoleProfile(currentRole.label, roleProfiles)?.label ?? '未识别'}</option>
+                          <option value="">自动识别：{matchedRoleProfile(currentRole.label, roleProfiles)?.label ?? (roleRecognitions[currentRole.key]?.source === 'deepseek' ? `DeepSeek：${roleRecognitions[currentRole.key]?.label}` : currentRole.roleProfileKey === 'deepseek' ? 'DeepSeek 已识别' : '失焦后识别')}</option>
                           <option value="custom">自定义角色说明</option>
                         </select>
                       </label>

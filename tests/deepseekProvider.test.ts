@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { buildDraftMessages, buildRoleSuggestionMessages } from '../server/ai/prompts.js';
+import { buildDraftMessages, buildRoleRecognitionMessages, buildRoleSuggestionMessages } from '../server/ai/prompts.js';
 import type { DraftRequest, TextModelProvider } from '../server/ai/types.js';
 
 const createMock = vi.fn();
@@ -127,6 +127,30 @@ describe('DeepSeek provider', () => {
       });
       expect(createMock).toHaveBeenCalledWith(expect.objectContaining({
         messages: buildRoleSuggestionMessages({ roleLabel: '豆包' }),
+      }));
+    } finally {
+      config.deepseekApiKey = originalApiKey;
+    }
+  });
+
+  it('recognizes an unmatched professional role with structured DeepSeek output', async () => {
+    const { config } = await import('../server/config.js');
+    const { deepSeekProvider } = await import('../server/ai/providers/deepseek.js');
+    const originalApiKey = config.deepseekApiKey;
+
+    try {
+      config.deepseekApiKey = 'test-deepseek-key';
+      createMock.mockResolvedValueOnce({ choices: [{ message: { content: JSON.stringify({
+        label: 'SMT 工艺工程师',
+        description: '关注贴片工艺参数、良率、缺陷闭环、产线变更与验证。',
+      }) } }] });
+
+      await expect(deepSeekProvider.recognizeRole({ roleLabel: 'SMT 工艺工程师' })).resolves.toEqual({
+        label: 'SMT 工艺工程师',
+        description: '关注贴片工艺参数、良率、缺陷闭环、产线变更与验证。',
+      });
+      expect(createMock).toHaveBeenCalledWith(expect.objectContaining({
+        messages: buildRoleRecognitionMessages({ roleLabel: 'SMT 工艺工程师' }),
       }));
     } finally {
       config.deepseekApiKey = originalApiKey;

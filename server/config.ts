@@ -30,6 +30,7 @@ export const config = {
   rateLimitWindowMs: Number(process.env.RATE_LIMIT_WINDOW_MS ?? 300000),
   apiRateLimitMax: Number(process.env.API_RATE_LIMIT_MAX ?? 100),
   aiRateLimitMax: Number(process.env.AI_RATE_LIMIT_MAX ?? 3),
+  roleRecognitionRateLimitMax: Number(process.env.ROLE_RECOGNITION_RATE_LIMIT_MAX ?? 20),
 };
 
 export function requireDeepSeekKey() {

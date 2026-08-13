@@ -17,6 +17,15 @@ export type RoleSuggestionRequest = {
   roleProfileDescription?: string;
 };
 
+export type RoleRecognitionRequest = {
+  roleLabel: string;
+};
+
+export type RoleRecognitionResponse = {
+  label: string;
+  description: string;
+};
+
 export type DraftMessage = {
   role: 'system' | 'user';
   content: string;
@@ -25,4 +34,5 @@ export type DraftMessage = {
 export type TextModelProvider = {
   generateDraft(input: DraftRequest): Promise<DraftResponse>;
   generateRoleSuggestion(input: RoleSuggestionRequest): Promise<DraftResponse>;
+  recognizeRole(input: RoleRecognitionRequest): Promise<RoleRecognitionResponse>;
 };
